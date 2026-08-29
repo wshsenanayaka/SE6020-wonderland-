@@ -1,0 +1,112 @@
+-- Wonderland Theme Park Platform Database Notes
+-- Target: MySQL / AWS RDS MySQL compatible database
+--
+-- Microservice-style backend mapping:
+-- services/VisitorProfileService.php       -> visitor registration and visitor lookup
+-- services/ProfileLoginService.php         -> visitor/admin login orchestration
+-- services/ProfileSessionService.php       -> profile cookies and logout
+-- services/TicketBookingService.php        -> ticket booking persistence
+-- services/ActivityService.php             -> admin activity management and public activity reads
+-- services/BookingReportService.php        -> dashboard and report booking reads
+-- services/JsonStorageService.php          -> local JSON fallback persistence
+--
+-- Controllers stay thin and call service classes:
+-- controller/controller_visitor_register.php
+-- controller/controller_profile_login.php
+-- controller/controller_book_ticket.php
+-- controller/controller_activity_manage.php
+-- controller/controller_logout.php
+
+CREATE DATABASE IF NOT EXISTS wonderland_db
+  CHARACTER SET utf8mb4
+  COLLATE utf8mb4_unicode_ci;
+
+USE wonderland_db;
+
+CREATE TABLE visitors_tb (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  full_name VARCHAR(120) NOT NULL,
+  email VARCHAR(160) NOT NULL UNIQUE,
+  contact_number VARCHAR(30) NULL,
+  password_hash VARCHAR(255) NOT NULL,
+  status TINYINT(1) NOT NULL DEFAULT 1,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE administrators_tb (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  full_name VARCHAR(120) NOT NULL,
+  email VARCHAR(160) NOT NULL UNIQUE,
+  password_hash VARCHAR(255) NOT NULL,
+  role_name VARCHAR(60) NOT NULL DEFAULT 'Administrator',
+  status TINYINT(1) NOT NULL DEFAULT 1,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE ticket_bookings_tb (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  visitor_id INT UNSIGNED NULL,
+  visitor_name VARCHAR(120) NOT NULL,
+  email VARCHAR(160) NOT NULL,
+  visit_date DATE NOT NULL,
+  ticket_type VARCHAR(40) NOT NULL,
+  ticket_label VARCHAR(80) NOT NULL,
+  quantity INT UNSIGNED NOT NULL DEFAULT 1,
+  contact_number VARCHAR(30) NULL,
+  total_amount DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+  booking_status VARCHAR(30) NOT NULL DEFAULT 'Pending',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_ticket_bookings_tb_email (email),
+  INDEX idx_ticket_bookings_tb_visit_date (visit_date),
+  CONSTRAINT fk_ticket_bookings_tb_visitor
+    FOREIGN KEY (visitor_id) REFERENCES visitors_tb(id)
+    ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE activities_tb (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  category VARCHAR(60) NOT NULL,
+  ride_type VARCHAR(80) NOT NULL,
+  name VARCHAR(140) NOT NULL,
+  tagline TEXT NOT NULL,
+  duration_label VARCHAR(40) NULL,
+  requirement_label VARCHAR(80) NULL,
+  background_image VARCHAR(255) NOT NULL DEFAULT 'assets/images/wonderland-hero.png',
+  icon VARCHAR(80) NOT NULL DEFAULT 'mdi-star-circle',
+  color VARCHAR(20) NOT NULL DEFAULT '#ee3e50',
+  zone VARCHAR(100) NULL,
+  wait_minutes INT UNSIGNED NOT NULL DEFAULT 0,
+  hourly_capacity INT UNSIGNED NOT NULL DEFAULT 0,
+  operating_status VARCHAR(60) NOT NULL DEFAULT 'Operational',
+  is_visible TINYINT(1) NOT NULL DEFAULT 1,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_activities_tb_category (category),
+  INDEX idx_activities_tb_visible (is_visible)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE attraction_events_tb (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  attraction_name VARCHAR(120) NOT NULL,
+  attraction_category VARCHAR(60) NOT NULL,
+  visitor_email VARCHAR(160) NULL,
+  event_type VARCHAR(60) NOT NULL,
+  event_value VARCHAR(120) NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_attraction_events_tb_category (attraction_category),
+  INDEX idx_attraction_events_tb_type (event_type),
+  INDEX idx_attraction_events_tb_created_at (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Default administrator login:
+-- Email: admin@wonderland.com
+-- Password: admin123
+
+INSERT INTO administrators_tb (full_name, email, password_hash, role_name, status)
+VALUES ('Park Administrator', 'admin@wonderland.com', '$2y$12$2RYtiV.c4Mha0KnY4LBswe5mH9lSpFP9IL7IWp1wj5YTc4TNfTQ22', 'Administrator', 1);
+
+--//////////////////////////////////////////////////// 
+
