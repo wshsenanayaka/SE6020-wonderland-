@@ -1,0 +1,13 @@
+{
+  "name": "wonderland-backend",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently -n auth,user,business,gateway -c blue,green,yellow,magenta \"npm.cmd --prefix auth-service run dev\" \"npm.cmd --prefix user-service run dev\" \"npm.cmd --prefix business-service run dev\" \"npm.cmd --prefix api-gateway run dev\"",
+    "start": "npm.cmd run dev",
+    "install:services": "npm.cmd install --prefix auth-service && npm.cmd install --prefix user-service && npm.cmd install --prefix business-service && npm.cmd install --prefix api-gateway"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.1"
+  }
+}

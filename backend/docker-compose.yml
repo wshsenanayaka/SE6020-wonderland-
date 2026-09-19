@@ -1,0 +1,47 @@
+services:
+  api-gateway:
+    build: ./api-gateway
+    ports:
+      - "8089:8089"
+    environment:
+      PORT: 8089
+      AUTH_SERVICE_URL: http://auth-service:4001
+      USER_SERVICE_URL: http://user-service:4002
+      BUSINESS_SERVICE_URL: http://business-service:4003
+      FRONTEND_ORIGIN: http://127.0.0.1:5173
+      ASSETS_DIR: /assets
+    volumes:
+      - ../assets:/assets
+    depends_on:
+      - auth-service
+      - user-service
+      - business-service
+
+  auth-service:
+    build: ./auth-service
+    environment:
+      PORT: 4001
+      DATA_DIR: /data
+      FRONTEND_ORIGIN: http://127.0.0.1:5173
+    volumes:
+      - ../data:/data
+
+  user-service:
+    build: ./user-service
+    environment:
+      PORT: 4002
+      DATA_DIR: /data
+      FRONTEND_ORIGIN: http://127.0.0.1:5173
+    volumes:
+      - ../data:/data
+
+  business-service:
+    build: ./business-service
+    environment:
+      PORT: 4003
+      DATA_DIR: /data
+      ASSETS_DIR: /assets
+      FRONTEND_ORIGIN: http://127.0.0.1:5173
+    volumes:
+      - ../data:/data
+      - ../assets:/assets
