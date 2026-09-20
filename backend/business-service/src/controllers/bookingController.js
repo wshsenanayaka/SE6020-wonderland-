@@ -1,5 +1,6 @@
 import { allTicketPasses, toTicketTypesMap } from '../services/ticketPassService.js';
-import { createBooking } from '../services/bookingService.js';
+import { createBooking, setBookingStripeSession } from '../services/bookingService.js';
+import { createCheckoutSession } from '../services/stripeService.js';
 
 export async function bookTicket(request, response) {
   const ticketTypes = toTicketTypesMap(await allTicketPasses());
@@ -16,6 +17,7 @@ export async function bookTicket(request, response) {
     visitor_name: String(request.body.visitor_name || '').trim(),
     email: String(request.body.email || '').trim(),
     visit_date: String(request.body.visit_date || '').trim(),
+    preferred_time_slot: String(request.body.preferred_time_slot || '').trim(),
     ticket_type: ticketKey,
     ticket_label: ticket.label,
     quantity,
@@ -24,7 +26,18 @@ export async function bookTicket(request, response) {
     created_at: new Date().toISOString(),
   };
 
-  await createBooking(booking);
+  if (!booking.visit_date || !booking.preferred_time_slot) {
+    return response.status(422).json({ success: false, message: 'Please select visit date and preferred time slot.' });
+  }
 
-  response.json({ success: true, message: 'Booking saved successfully.' });
+  const bookingId = await createBooking(booking);
+  const checkoutSession = await createCheckoutSession({ bookingId, booking, ticket });
+  await setBookingStripeSession(bookingId, checkoutSession.id);
+
+  response.json({
+    success: true,
+    message: 'Booking saved. Redirecting to Stripe payment.',
+    booking_id: bookingId,
+    checkout_url: checkoutSession.url,
+  });
 }

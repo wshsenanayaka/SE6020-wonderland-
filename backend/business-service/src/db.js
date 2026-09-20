@@ -96,18 +96,49 @@ async function ensureDatabase() {
         visitor_name VARCHAR(120) NOT NULL,
         email VARCHAR(160) NOT NULL,
         visit_date DATE NOT NULL,
+        preferred_time_slot VARCHAR(40) NULL,
         ticket_type VARCHAR(40) NOT NULL,
         ticket_label VARCHAR(120) NOT NULL,
         quantity INT UNSIGNED NOT NULL DEFAULT 1,
         contact_number VARCHAR(30) NULL,
         total_amount DECIMAL(10,2) NOT NULL DEFAULT 0.00,
         booking_status VARCHAR(30) NOT NULL DEFAULT 'Pending',
+        stripe_session_id VARCHAR(160) NULL,
+        stripe_payment_intent_id VARCHAR(160) NULL,
+        payment_status VARCHAR(40) NOT NULL DEFAULT 'Pending',
+        paid_at DATETIME NULL,
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
         INDEX idx_ticket_bookings_tb_email (email),
         INDEX idx_ticket_bookings_tb_visit_date (visit_date)
       )
     `);
+
+    await ensureColumn(
+      'ticket_bookings_tb',
+      'preferred_time_slot',
+      'ALTER TABLE ticket_bookings_tb ADD COLUMN preferred_time_slot VARCHAR(40) NULL AFTER visit_date',
+    );
+    await ensureColumn(
+      'ticket_bookings_tb',
+      'stripe_session_id',
+      'ALTER TABLE ticket_bookings_tb ADD COLUMN stripe_session_id VARCHAR(160) NULL AFTER booking_status',
+    );
+    await ensureColumn(
+      'ticket_bookings_tb',
+      'stripe_payment_intent_id',
+      'ALTER TABLE ticket_bookings_tb ADD COLUMN stripe_payment_intent_id VARCHAR(160) NULL AFTER stripe_session_id',
+    );
+    await ensureColumn(
+      'ticket_bookings_tb',
+      'payment_status',
+      "ALTER TABLE ticket_bookings_tb ADD COLUMN payment_status VARCHAR(40) NOT NULL DEFAULT 'Pending' AFTER stripe_payment_intent_id",
+    );
+    await ensureColumn(
+      'ticket_bookings_tb',
+      'paid_at',
+      'ALTER TABLE ticket_bookings_tb ADD COLUMN paid_at DATETIME NULL AFTER payment_status',
+    );
   })();
 
   return ready;

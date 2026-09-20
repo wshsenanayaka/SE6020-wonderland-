@@ -18,6 +18,7 @@ export const emptyBooking = {
   visitor_name: '',
   email: '',
   visit_date: '',
+  preferred_time_slot: '',
   ticket_type: '',
   quantity: 1,
   contact_number: '',

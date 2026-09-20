@@ -765,7 +765,7 @@ textarea {
 
 .dashboard-page {
   min-height: calc(100vh - 64px);
-  padding: 72px max(24px, calc((100vw - 1280px) / 2));
+  padding: 72px max(24px, calc((100vw - 1440px) / 2));
   background:
     linear-gradient(180deg, rgba(234, 243, 251, 0.96), rgba(247, 249, 252, 1)),
     url("/assets/images/wonderland-hero.png") center/cover fixed;
@@ -1051,6 +1051,10 @@ textarea {
   align-items: end;
 }
 
+.visitor-profile-form {
+  margin-top: 8px;
+}
+
 .form-actions {
   display: flex;
   gap: 10px;
@@ -1084,6 +1088,15 @@ textarea {
   min-width: 680px;
 }
 
+.visitor-bookings-panel .dashboard-table table {
+  min-width: 1040px;
+}
+
+.visitor-bookings-panel .dashboard-table button:not(.switch-toggle) {
+  min-width: 104px;
+  white-space: nowrap;
+}
+
 .dashboard-table th,
 .dashboard-table td {
   padding: 14px 12px;
@@ -1110,6 +1123,11 @@ textarea {
   font-size: 12px;
   font-weight: 900;
   cursor: pointer;
+}
+
+.dashboard-table button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 .table-action-row {

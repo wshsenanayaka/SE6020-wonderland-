@@ -1,6 +1,6 @@
 import { behaviourMix, operations, parkStats } from '../data/defaultData.js';
 import { allActivities, toPublicCard, visibleActivities } from '../services/activityService.js';
-import { recentBookings } from '../services/bookingService.js';
+import { bookingsByVisitorEmail, recentBookings } from '../services/bookingService.js';
 import { allTicketPasses, toTicketTypesMap } from '../services/ticketPassService.js';
 
 export async function platformData(request, response) {
@@ -12,6 +12,9 @@ export async function platformData(request, response) {
   const profileEmail = request.cookies.wonderland_profile_email || '';
   const profileContact = request.cookies.wonderland_profile_contact || '';
   const profileType = request.cookies.wonderland_profile_type || '';
+  const visitorBookings = profileType === 'visitor'
+    ? await bookingsByVisitorEmail(profileEmail)
+    : [];
 
   response.json({
     attractions: visible.map(toPublicCard),
@@ -22,6 +25,7 @@ export async function platformData(request, response) {
     parkStats,
     behaviourMix,
     recentBookings: bookings,
+    visitorBookings,
     profile: {
       name: profileName,
       email: profileEmail,

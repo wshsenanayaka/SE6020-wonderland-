@@ -1,17 +1,46 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import QRCode from 'qrcode';
 import FormInput from '../components/FormInput.jsx';
 import { emptyActivity, emptyTicketPass } from '../constants/forms.js';
 import { useApp } from '../context/AppContext.jsx';
 import { api } from '../services/api.js';
 
 export default function Dashboard() {
-  const { data, profile, reloadPlatformData, setNotice, setError } = useApp();
+  const { data, profile, setProfile, reloadPlatformData, setNotice, setError } = useApp();
   const [activityForm, setActivityForm] = useState(emptyActivity);
   const [activityImage, setActivityImage] = useState(null);
   const [ticketForm, setTicketForm] = useState(emptyTicketPass);
   const [editingTicketId, setEditingTicketId] = useState(null);
   const [activeSection, setActiveSection] = useState('overview');
+  const [visitorForm, setVisitorForm] = useState({
+    full_name: profile.name || '',
+    email: profile.email || '',
+    contact_number: profile.contact_number || '',
+  });
+
+  useEffect(() => {
+    if (profile.type !== 'visitor') {
+      return;
+    }
+
+    api.visitorProfile()
+      .then((payload) => {
+        const visitor = payload.visitor || {};
+        setVisitorForm({
+          full_name: visitor.full_name || profile.name || '',
+          email: visitor.email || profile.email || '',
+          contact_number: visitor.contact_number || profile.contact_number || '',
+        });
+      })
+      .catch(() => {
+        setVisitorForm({
+          full_name: profile.name || '',
+          email: profile.email || '',
+          contact_number: profile.contact_number || '',
+        });
+      });
+  }, [profile]);
 
   if (!profile.isLoggedIn) {
     return (
@@ -39,6 +68,7 @@ export default function Dashboard() {
       ]
     : [
         ['overview', 'Overview'],
+        ['my-bookings', 'My Bookings'],
         ['status', 'Park Status'],
         ['recommendations', 'Recommended Rides'],
         ['profile', 'Visitor Profile'],
@@ -147,6 +177,57 @@ export default function Dashboard() {
       .catch((requestError) => setError(requestError.message));
   }
 
+  async function downloadBookingQr(booking) {
+    try {
+      const qrPayload = [
+        'Wonderland Booking',
+        `Booking ID: ${booking.id}`,
+        `Visitor: ${booking.visitor_name || profile.name}`,
+        `Ticket: ${booking.ticket_label || booking.ticket_type}`,
+        `Visit Date: ${formatDisplayDate(booking.visit_date)}`,
+        `Time Slot: ${booking.preferred_time_slot || '-'}`,
+        `Payment: ${booking.payment_status || 'Pending'}`,
+      ].join('\n');
+      const qrDataUrl = await QRCode.toDataURL(qrPayload, {
+        errorCorrectionLevel: 'H',
+        margin: 2,
+        width: 720,
+      });
+      const downloadLink = document.createElement('a');
+      downloadLink.href = qrDataUrl;
+      downloadLink.download = `wonderland-booking-${booking.id}-qr.png`;
+      downloadLink.click();
+    } catch (error) {
+      setError(error.message || 'Unable to generate booking QR code.');
+    }
+  }
+
+  function resendBookingEmail(booking) {
+    setNotice('');
+    setError('');
+
+    api.resendBookingEmail(booking.id)
+      .then((payload) => setNotice(payload.message))
+      .catch((requestError) => setError(requestError.message));
+  }
+
+  function submitVisitorProfile(event) {
+    event.preventDefault();
+    setNotice('');
+    setError('');
+
+    api.updateVisitorProfile({
+      full_name: visitorForm.full_name,
+      contact_number: visitorForm.contact_number,
+    })
+      .then((payload) => {
+        setNotice(payload.message);
+        setProfile(payload.profile || profile);
+        return reloadPlatformData();
+      })
+      .catch((requestError) => setError(requestError.message));
+  }
+
   return (
     <main className="dashboard-page">
       <div className="dashboard-layout">
@@ -183,6 +264,17 @@ export default function Dashboard() {
           )}
 
           {activeSection === 'status' && <StatusGrid operations={data.operations} />}
+
+          {!isAdmin && activeSection === 'my-bookings' && (
+            <section className="dashboard-panel visitor-bookings-panel">
+              <h2>My Booking Details</h2>
+              <VisitorBookingTable
+                bookings={data.visitorBookings || []}
+                onDownloadQr={downloadBookingQr}
+                onResendEmail={resendBookingEmail}
+              />
+            </section>
+          )}
 
           {isAdmin && activeSection === 'manage-activities' && (
             <section className="dashboard-panel manage-activities-panel">
@@ -279,7 +371,11 @@ export default function Dashboard() {
           {!isAdmin && activeSection === 'profile' && (
             <section className="dashboard-panel">
               <h2>Visitor Profile</h2>
-              <VisitorProfile profile={profile} />
+              <VisitorProfile
+                form={visitorForm}
+                onChange={setVisitorForm}
+                onSubmit={submitVisitorProfile}
+              />
             </section>
           )}
         </div>
@@ -436,19 +532,102 @@ function BookingList({ bookings }) {
     <div className="dashboard-list">
       {bookings.length === 0 && <span>No bookings found yet.</span>}
       {bookings.map((booking, index) => (
-        <span key={`${booking.email}-${index}`}>{booking.visitor_name || 'Visitor'} - {booking.ticket_label || booking.ticket_type}</span>
+        <span key={`${booking.email}-${index}`}>
+          {booking.visitor_name || 'Visitor'} - {booking.ticket_label || booking.ticket_type}
+          {' | '}
+          Time: {booking.preferred_time_slot || '-'}
+          {' | '}
+          Booking: {booking.booking_status || 'Pending'}
+          {' | '}
+          Payment: {booking.payment_status || 'Pending'}
+        </span>
       ))}
     </div>
   );
 }
 
-function VisitorProfile({ profile }) {
+function VisitorBookingTable({ bookings, onDownloadQr, onResendEmail }) {
   return (
-    <div className="dashboard-list">
-      <span>Name: {profile.name}</span>
-      <span>Profile Type: Visitor</span>
-      <span>Status: Active</span>
+    <div className="dashboard-table">
+      <table>
+        <thead>
+          <tr>
+            <th>Booking ID</th>
+            <th>Visit Date</th>
+            <th>Time Slot</th>
+            <th>Ticket</th>
+            <th>Qty</th>
+            <th>Total</th>
+            <th>Payment</th>
+            <th>QR Code</th>
+            <th>Email</th>
+          </tr>
+        </thead>
+        <tbody>
+          {bookings.length === 0 && (
+            <tr><td colSpan="9">No bookings found yet.</td></tr>
+          )}
+          {bookings.map((booking) => (
+            <tr key={booking.id}>
+              <td>#{booking.id}</td>
+              <td>{formatDisplayDate(booking.visit_date)}</td>
+              <td>{booking.preferred_time_slot || '-'}</td>
+              <td>{booking.ticket_label || booking.ticket_type}</td>
+              <td>{booking.quantity}</td>
+              <td>{formatCurrency(booking.total)}</td>
+              <td>
+                <span className={booking.payment_status === 'Paid' ? 'status-pill enabled' : 'status-pill disabled'}>
+                  {booking.payment_status === 'Paid' ? 'Paid / Booked' : 'Pending Payment'}
+                </span>
+              </td>
+              <td>
+                <button
+                  disabled={booking.payment_status !== 'Paid'}
+                  type="button"
+                  onClick={() => onDownloadQr(booking)}
+                >
+                  Download QR
+                </button>
+              </td>
+              <td>
+                <button
+                  disabled={booking.payment_status !== 'Paid'}
+                  type="button"
+                  onClick={() => onResendEmail(booking)}
+                >
+                  Resend
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
+  );
+}
+
+function VisitorProfile({ form, onChange, onSubmit }) {
+  return (
+    <form className="activity-form-react visitor-profile-form" onSubmit={onSubmit}>
+      <FormInput
+        label="Full Name"
+        value={form.full_name}
+        onChange={(full_name) => onChange({ ...form, full_name })}
+      />
+      <FormInput
+        disabled
+        label="Email Address"
+        type="email"
+        value={form.email}
+        onChange={() => {}}
+      />
+      <FormInput
+        label="Contact Number"
+        value={form.contact_number}
+        onChange={(contact_number) => onChange({ ...form, contact_number })}
+      />
+      <button type="submit">Update Profile</button>
+    </form>
   );
 }
 
@@ -493,5 +672,26 @@ function formatTicketAmount(value) {
   return Number(value || 0).toLocaleString('en-US', {
     minimumFractionDigits: 0,
     maximumFractionDigits: 2,
+  });
+}
+
+function formatCurrency(value) {
+  return Number(value || 0).toLocaleString('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+function formatDisplayDate(value) {
+  if (!value) {
+    return '-';
+  }
+
+  return new Date(value).toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: '2-digit',
   });
 }

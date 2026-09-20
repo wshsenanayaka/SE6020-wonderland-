@@ -55,6 +55,14 @@ export const api = {
     method: 'POST',
     body: JSON.stringify(data),
   }),
+  confirmStripeSession: (sessionId) => request('/api/business/stripe/confirm-session', {
+    method: 'POST',
+    body: JSON.stringify({ session_id: sessionId }),
+  }),
+  resendBookingEmail: (bookingId) => request(`/api/business/bookings/${bookingId}/resend-email`, {
+    method: 'POST',
+    body: JSON.stringify({}),
+  }),
   createTicketPass: (data) => request('/api/business/ticket-passes', {
     method: 'POST',
     body: JSON.stringify(data),
@@ -72,6 +80,11 @@ export const api = {
   }),
   registerVisitor: (data) => request('/api/users/register', {
     method: 'POST',
+    body: JSON.stringify(data),
+  }),
+  visitorProfile: () => request('/api/users/profile'),
+  updateVisitorProfile: (data) => request('/api/users/profile', {
+    method: 'PUT',
     body: JSON.stringify(data),
   }),
   logout: () => request('/api/auth/logout', {

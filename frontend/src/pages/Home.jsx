@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import Swal from 'sweetalert2';
+import 'sweetalert2/dist/sweetalert2.min.css';
 import FormInput from '../components/FormInput.jsx';
 import { categories, emptyBooking } from '../constants/forms.js';
 import { useApp } from '../context/AppContext.jsx';
@@ -62,7 +64,7 @@ export default function Home() {
     }, 100);
   }, [data.ticketPasses, profile]);
 
-  function handleBooking(event) {
+  async function handleBooking(event) {
     event.preventDefault();
     setNotice('');
     setError('');
@@ -75,11 +77,33 @@ export default function Home() {
 
     const ticketPasses = data.ticketPasses || [];
     const ticket_type = bookingForm.ticket_type || String(ticketPasses[0]?.id || '');
+    const selectedTicket = ticketPasses.find((ticketPass) => String(ticketPass.id) === String(ticket_type));
+    const confirmation = await Swal.fire({
+      title: 'Confirm Booking',
+      html: `
+        <strong>${selectedTicket?.ticket_tier || 'Wonderland Ticket'}</strong><br />
+        Continue to Stripe secure payment?
+      `,
+      icon: 'question',
+      showCancelButton: true,
+      confirmButtonText: 'Continue to Payment',
+      cancelButtonText: 'Cancel',
+      confirmButtonColor: '#ee3e50',
+      cancelButtonColor: '#082640',
+      reverseButtons: true,
+    });
+
+    if (!confirmation.isConfirmed) {
+      return;
+    }
 
     api.bookTicket({ ...bookingForm, ticket_type })
       .then((payload) => {
-        setBookingForm(emptyBooking);
-        setNotice(payload.message);
+        if (payload.checkout_url) {
+          window.location.assign(payload.checkout_url);
+          return;
+        }
+        setNotice(payload.message || 'Booking saved successfully.');
       })
       .catch((requestError) => setError(requestError.message));
   }
@@ -261,6 +285,20 @@ function Booking({ isVisitorLocked, ticketPasses, form, onChange, onSubmit }) {
           onChange={(email) => onChange({ ...form, email })}
         />
         <FormInput label="Visit Date" type="date" value={form.visit_date} onChange={(visit_date) => onChange({ ...form, visit_date })} />
+        <label>
+          Preferred Time Slot
+          <select
+            required
+            value={form.preferred_time_slot}
+            onChange={(event) => onChange({ ...form, preferred_time_slot: event.target.value })}
+          >
+            <option value="">Select time slot</option>
+            <option value="09:00 AM - 12:00 PM">09:00 AM - 12:00 PM</option>
+            <option value="12:00 PM - 03:00 PM">12:00 PM - 03:00 PM</option>
+            <option value="03:00 PM - 06:00 PM">03:00 PM - 06:00 PM</option>
+            <option value="06:00 PM - 10:00 PM">06:00 PM - 10:00 PM</option>
+          </select>
+        </label>
         <label>
           Ticket Type
           <select value={selectedTicket} onChange={(event) => onChange({ ...form, ticket_type: event.target.value })}>
