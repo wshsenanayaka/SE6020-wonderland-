@@ -10,6 +10,7 @@ export async function platformData(request, response) {
   const bookings = await recentBookings(10);
   const profileName = request.cookies.wonderland_profile_name || '';
   const profileEmail = request.cookies.wonderland_profile_email || '';
+  const profileContact = request.cookies.wonderland_profile_contact || '';
   const profileType = request.cookies.wonderland_profile_type || '';
 
   response.json({
@@ -24,6 +25,7 @@ export async function platformData(request, response) {
     profile: {
       name: profileName,
       email: profileEmail,
+      contact_number: profileContact,
       type: profileType,
       isLoggedIn: Boolean(profileName),
     },

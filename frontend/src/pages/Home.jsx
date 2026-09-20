@@ -32,8 +32,35 @@ export default function Home() {
       ...currentForm,
       visitor_name: profile.name || '',
       email: profile.email || '',
+      contact_number: profile.contact_number || '',
     }));
   }, [profile]);
+
+  useEffect(() => {
+    if (!isVisitorLoggedIn(profile)) {
+      return;
+    }
+
+    const pendingTicketId = window.sessionStorage.getItem('wonderland_pending_ticket_id');
+    if (!pendingTicketId) {
+      return;
+    }
+
+    const hasTicket = (data.ticketPasses || []).some((ticketPass) => String(ticketPass.id) === pendingTicketId);
+    if (!hasTicket) {
+      window.sessionStorage.removeItem('wonderland_pending_ticket_id');
+      return;
+    }
+
+    setBookingForm((currentForm) => ({
+      ...currentForm,
+      ticket_type: pendingTicketId,
+    }));
+    window.sessionStorage.removeItem('wonderland_pending_ticket_id');
+    window.setTimeout(() => {
+      document.getElementById('booking')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 100);
+  }, [data.ticketPasses, profile]);
 
   function handleBooking(event) {
     event.preventDefault();
@@ -62,12 +89,13 @@ export default function Home() {
     setError('');
 
     if (!isVisitorLoggedIn(profile)) {
+      window.sessionStorage.setItem('wonderland_pending_ticket_id', String(ticketPass.id));
       setError('Please login with a Visitor Profile before selecting tickets.');
       navigate('/login');
       return;
     }
 
-    setBookingForm({ ...bookingForm, ticket_type: String(ticketPass.id) });
+    setBookingForm((currentForm) => ({ ...currentForm, ticket_type: String(ticketPass.id) }));
     document.getElementById('booking')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
@@ -242,7 +270,12 @@ function Booking({ isVisitorLocked, ticketPasses, form, onChange, onSubmit }) {
           </select>
         </label>
         <FormInput label="Number of Tickets" type="number" value={form.quantity} onChange={(quantity) => onChange({ ...form, quantity })} />
-        <FormInput label="Contact Number" value={form.contact_number} onChange={(contact_number) => onChange({ ...form, contact_number })} />
+        <FormInput
+          disabled={isVisitorLocked}
+          label="Contact Number"
+          value={form.contact_number}
+          onChange={(contact_number) => onChange({ ...form, contact_number })}
+        />
         <button type="submit">Continue to Booking</button>
       </form>
     </section>

@@ -52,6 +52,13 @@ async function ensureDatabase() {
       )
     `);
 
+    await removeDuplicateTicketPasses();
+    await ensureUniqueIndex(
+      'ticket_passes_tb',
+      'uniq_ticket_passes_tier',
+      'CREATE UNIQUE INDEX uniq_ticket_passes_tier ON ticket_passes_tb (ticket_tier)',
+    );
+
     await pool.query(`
       CREATE TABLE IF NOT EXISTS activities_tb (
         id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -117,4 +124,27 @@ async function ensureColumn(tableName, columnName, alterSql) {
   if (Number(rows[0]?.total || 0) === 0) {
     await pool.query(alterSql);
   }
+}
+
+async function ensureUniqueIndex(tableName, indexName, createSql) {
+  const [rows] = await pool.execute(
+    `SELECT COUNT(*) AS total
+     FROM information_schema.STATISTICS
+     WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND INDEX_NAME = ?`,
+    [config.dbName, tableName, indexName],
+  );
+
+  if (Number(rows[0]?.total || 0) === 0) {
+    await pool.query(createSql);
+  }
+}
+
+async function removeDuplicateTicketPasses() {
+  await pool.query(`
+    DELETE duplicate_pass
+    FROM ticket_passes_tb duplicate_pass
+    INNER JOIN ticket_passes_tb original_pass
+      ON duplicate_pass.ticket_tier = original_pass.ticket_tier
+      AND duplicate_pass.id > original_pass.id
+  `);
 }

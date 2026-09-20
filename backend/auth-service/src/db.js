@@ -51,6 +51,21 @@ async function ensureDatabase() {
         INDEX idx_visitors_tb_status (status)
       )
     `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS administrators_tb (
+        id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        full_name VARCHAR(120) NOT NULL,
+        email VARCHAR(160) NOT NULL UNIQUE,
+        password_hash VARCHAR(255) NOT NULL,
+        role_name VARCHAR(60) NOT NULL DEFAULT 'Administrator',
+        status TINYINT(1) NOT NULL DEFAULT 1,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_administrators_tb_email (email),
+        INDEX idx_administrators_tb_status (status)
+      )
+    `);
   })();
 
   return ready;

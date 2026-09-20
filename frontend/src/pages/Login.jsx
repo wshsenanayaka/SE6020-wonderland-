@@ -22,7 +22,8 @@ export default function Login() {
         setProfile(payload.profile || { isLoggedIn: false });
         setLoginForm(emptyLogin);
         setNotice('Login successful.');
-        navigate('/dashboard');
+        const pendingTicketId = window.sessionStorage.getItem('wonderland_pending_ticket_id');
+        navigate(pendingTicketId && payload.profile?.type === 'visitor' ? '/' : '/dashboard');
       })
       .catch((requestError) => setError(requestError.message));
   }

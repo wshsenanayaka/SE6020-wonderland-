@@ -72,7 +72,12 @@ export async function createTicketPass(body) {
 
   const result = await query(
     `INSERT INTO ticket_passes_tb (ticket_tier, guests, ticket_price_indicative, effective_price_per_guest, status)
-     VALUES (?, ?, ?, ?, 1)`,
+     VALUES (?, ?, ?, ?, 1)
+     ON DUPLICATE KEY UPDATE
+       guests = VALUES(guests),
+       ticket_price_indicative = VALUES(ticket_price_indicative),
+       effective_price_per_guest = VALUES(effective_price_per_guest),
+       status = 1`,
     [ticketPass.ticket_tier, ticketPass.guests, ticketPass.ticket_price_indicative, ticketPass.effective_price_per_guest],
   );
   return { ...ticketPass, id: result.insertId };
