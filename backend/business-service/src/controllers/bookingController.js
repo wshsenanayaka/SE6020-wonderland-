@@ -22,6 +22,7 @@ export async function bookTicket(request, response) {
     ticket_label: ticket.label,
     quantity,
     contact_number: String(request.body.contact_number || '').trim(),
+    currency_code: ticket.currency_code || 'USD',
     total: quantity * Number(ticket.price),
     created_at: new Date().toISOString(),
   };

@@ -47,6 +47,7 @@ CREATE TABLE IF NOT EXISTS ticket_passes_tb (
   id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   ticket_tier VARCHAR(120) NOT NULL,
   guests VARCHAR(120) NOT NULL,
+  currency_code VARCHAR(3) NOT NULL DEFAULT 'USD',
   ticket_price_indicative DECIMAL(10,2) NOT NULL,
   effective_price_per_guest DECIMAL(10,2) NOT NULL,
   status TINYINT(1) NOT NULL DEFAULT 1,
@@ -59,14 +60,15 @@ CREATE TABLE IF NOT EXISTS ticket_passes_tb (
 INSERT INTO ticket_passes_tb (
   ticket_tier,
   guests,
+  currency_code,
   ticket_price_indicative,
   effective_price_per_guest,
   status
 )
 VALUES
-  ('Adult Day Pass', '1 Adult', 48.00, 48.00, 1),
-  ('Child Day Pass', '1 Child', 32.00, 32.00, 1),
-  ('Family Bundle', '2 Adults + 2 Children', 145.00, 36.25, 1);
+  ('Adult Day Pass', '1 Adult', 'USD', 48.00, 48.00, 1),
+  ('Child Day Pass', '1 Child', 'USD', 32.00, 32.00, 1),
+  ('Family Bundle', '2 Adults + 2 Children', 'USD', 145.00, 36.25, 1);
 
 CREATE TABLE IF NOT EXISTS ticket_bookings_tb (
   id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -78,6 +80,7 @@ CREATE TABLE IF NOT EXISTS ticket_bookings_tb (
   ticket_label VARCHAR(120) NOT NULL,
   quantity INT UNSIGNED NOT NULL DEFAULT 1,
   contact_number VARCHAR(30) NULL,
+  currency_code VARCHAR(3) NOT NULL DEFAULT 'USD',
   total_amount DECIMAL(10,2) NOT NULL DEFAULT 0.00,
   booking_status VARCHAR(30) NOT NULL DEFAULT 'Pending',
   stripe_session_id VARCHAR(160) NULL,

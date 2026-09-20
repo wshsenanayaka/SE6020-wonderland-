@@ -1,8 +1,10 @@
 import express from 'express';
 import cors from 'cors';
+import swaggerUi from 'swagger-ui-express';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { config } from './config.js';
+import { openApiSpec } from './openapi.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -17,6 +19,13 @@ const assetsDir = path.isAbsolute(config.assetsDir)
   : path.resolve(__dirname, '../../..', config.assetsDir);
 
 app.use('/assets', express.static(assetsDir));
+
+app.get('/api-docs/openapi.json', (_request, response) => {
+  response.json(openApiSpec);
+});
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(openApiSpec, {
+  customSiteTitle: 'Wonderland API Documentation',
+}));
 
 app.use('/api/auth', proxyRequest('/api/auth', config.authServiceUrl, '/auth'));
 app.use('/api/users', proxyRequest('/api/users', config.userServiceUrl, '/users'));

@@ -33,7 +33,7 @@ export async function createCheckoutSession({ bookingId, booking, ticket }) {
       {
         quantity: booking.quantity,
         price_data: {
-          currency: config.stripeCurrency.toLowerCase(),
+          currency: (ticket.currency_code || config.stripeCurrency).toLowerCase(),
           product_data: {
             name: booking.ticket_label,
             description: `Wonderland visit date: ${booking.visit_date} | Time slot: ${booking.preferred_time_slot}`,

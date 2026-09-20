@@ -7,7 +7,7 @@ export async function platformData(request, response) {
   const activities = await allActivities();
   const visible = await visibleActivities();
   const ticketPasses = await allTicketPasses();
-  const bookings = await recentBookings(10);
+  const bookings = await recentBookings();
   const profileName = request.cookies.wonderland_profile_name || '';
   const profileEmail = request.cookies.wonderland_profile_email || '';
   const profileContact = request.cookies.wonderland_profile_contact || '';

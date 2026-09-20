@@ -4,8 +4,8 @@ export async function createBooking(booking) {
   const result = await query(
     `INSERT INTO ticket_bookings_tb (
       visitor_name, email, visit_date, preferred_time_slot, ticket_type, ticket_label, quantity,
-      contact_number, total_amount, booking_status, payment_status
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending Payment', 'Pending')`,
+      contact_number, currency_code, total_amount, booking_status, payment_status
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending Payment', 'Pending')`,
     [
       booking.visitor_name,
       booking.email,
@@ -15,6 +15,7 @@ export async function createBooking(booking) {
       booking.ticket_label,
       booking.quantity,
       booking.contact_number,
+      booking.currency_code,
       booking.total,
     ],
   );
@@ -22,15 +23,18 @@ export async function createBooking(booking) {
   return result.insertId;
 }
 
-export async function recentBookings(limit = 10) {
+export async function recentBookings(limit = null) {
+  const limitClause = Number.isInteger(limit) && limit > 0 ? 'LIMIT ?' : '';
+  const params = limitClause ? [limit] : [];
+
   return query(
     `SELECT id, visitor_name, email, visit_date, ticket_type, ticket_label,
-            preferred_time_slot, quantity, contact_number, total_amount AS total, booking_status,
+            preferred_time_slot, quantity, contact_number, currency_code, total_amount AS total, booking_status,
             payment_status, stripe_session_id, stripe_payment_intent_id, paid_at, created_at
      FROM ticket_bookings_tb
      ORDER BY id DESC
-     LIMIT ?`,
-    [limit],
+     ${limitClause}`,
+    params,
   );
 }
 
@@ -41,7 +45,7 @@ export async function bookingsByVisitorEmail(email) {
 
   return query(
     `SELECT id, visitor_name, email, visit_date, ticket_type, ticket_label,
-            preferred_time_slot, quantity, contact_number, total_amount AS total, booking_status,
+            preferred_time_slot, quantity, contact_number, currency_code, total_amount AS total, booking_status,
             payment_status, stripe_session_id, stripe_payment_intent_id, paid_at, created_at
      FROM ticket_bookings_tb
      WHERE email = ?
@@ -74,7 +78,7 @@ export async function bookingByStripeSession(sessionId) {
   const rows = await query(
     `SELECT id, visitor_name, email, visit_date, preferred_time_slot, ticket_type,
             ticket_label, quantity, contact_number, total_amount AS total,
-            booking_status, payment_status, stripe_session_id,
+            currency_code, booking_status, payment_status, stripe_session_id,
             stripe_payment_intent_id, paid_at, created_at
      FROM ticket_bookings_tb
      WHERE stripe_session_id = ?
@@ -89,7 +93,7 @@ export async function bookingByIdForVisitor(bookingId, email) {
   const rows = await query(
     `SELECT id, visitor_name, email, visit_date, preferred_time_slot, ticket_type,
             ticket_label, quantity, contact_number, total_amount AS total,
-            booking_status, payment_status, stripe_session_id,
+            currency_code, booking_status, payment_status, stripe_session_id,
             stripe_payment_intent_id, paid_at, created_at
      FROM ticket_bookings_tb
      WHERE id = ? AND email = ?

@@ -44,6 +44,7 @@ export const emptyActivity = {
 export const emptyTicketPass = {
   ticket_tier: '',
   guests: '',
+  currency_code: 'USD',
   ticket_price_indicative: '',
   effective_price_per_guest: '',
 };

@@ -42,6 +42,7 @@ async function ensureDatabase() {
         id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
         ticket_tier VARCHAR(120) NOT NULL,
         guests VARCHAR(120) NOT NULL,
+        currency_code VARCHAR(3) NOT NULL DEFAULT 'USD',
         ticket_price_indicative DECIMAL(10,2) NOT NULL,
         effective_price_per_guest DECIMAL(10,2) NOT NULL,
         status TINYINT(1) NOT NULL DEFAULT 1,
@@ -51,6 +52,12 @@ async function ensureDatabase() {
         INDEX idx_ticket_passes_status (status)
       )
     `);
+
+    await ensureColumn(
+      'ticket_passes_tb',
+      'currency_code',
+      "ALTER TABLE ticket_passes_tb ADD COLUMN currency_code VARCHAR(3) NOT NULL DEFAULT 'USD' AFTER guests",
+    );
 
     await removeDuplicateTicketPasses();
     await ensureUniqueIndex(
@@ -101,6 +108,7 @@ async function ensureDatabase() {
         ticket_label VARCHAR(120) NOT NULL,
         quantity INT UNSIGNED NOT NULL DEFAULT 1,
         contact_number VARCHAR(30) NULL,
+        currency_code VARCHAR(3) NOT NULL DEFAULT 'USD',
         total_amount DECIMAL(10,2) NOT NULL DEFAULT 0.00,
         booking_status VARCHAR(30) NOT NULL DEFAULT 'Pending',
         stripe_session_id VARCHAR(160) NULL,
@@ -118,6 +126,11 @@ async function ensureDatabase() {
       'ticket_bookings_tb',
       'preferred_time_slot',
       'ALTER TABLE ticket_bookings_tb ADD COLUMN preferred_time_slot VARCHAR(40) NULL AFTER visit_date',
+    );
+    await ensureColumn(
+      'ticket_bookings_tb',
+      'currency_code',
+      "ALTER TABLE ticket_bookings_tb ADD COLUMN currency_code VARCHAR(3) NOT NULL DEFAULT 'USD' AFTER contact_number",
     );
     await ensureColumn(
       'ticket_bookings_tb',

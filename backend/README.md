@@ -76,4 +76,4 @@ POST /api/business/bookings
 POST /api/business/activities
 ```
 
-The services currently preserve the existing JSON file persistence in `../data` and uploaded activity images in `../assets/images/activities`.
+The services use MySQL for persistence and store public images in `../frontend/public/assets`.

@@ -225,7 +225,7 @@ function Tickets({ ticketPasses, onSelectTicket }) {
         {ticketPasses.map((ticketPass) => (
           <article className="ticket-card" key={ticketPass.id}>
             <h3>{ticketPass.ticket_tier}</h3>
-            <strong>{formatTicketAmount(ticketPass.ticket_price_indicative)}</strong>
+            <strong>{formatTicketAmount(ticketPass.ticket_price_indicative, ticketPass.currency_code)}</strong>
             <p>Guests: {ticketPass.guests}</p>
             <button type="button" onClick={() => onSelectTicket(ticketPass)}>Select Ticket</button>
           </article>
@@ -320,11 +320,11 @@ function Booking({ isVisitorLocked, ticketPasses, form, onChange, onSubmit }) {
   );
 }
 
-function formatTicketAmount(value) {
-  return Number(value || 0).toLocaleString('en-US', {
+function formatTicketAmount(value, currencyCode = 'USD') {
+  return `${currencyCode || 'USD'} ${Number(value || 0).toLocaleString('en-US', {
     minimumFractionDigits: 0,
     maximumFractionDigits: 2,
-  });
+  })}`;
 }
 
 function isVisitorLoggedIn(profile) {

@@ -47,7 +47,7 @@ export async function sendBookingConfirmationEmail(booking) {
           ${row('Quantity', booking.quantity)}
           ${row('Visit Date', formatDate(booking.visit_date))}
           ${row('Preferred Time Slot', booking.preferred_time_slot || '-')}
-          ${row('Total', `$${Number(booking.total || 0).toFixed(2)}`)}
+          ${row('Total', formatAmount(booking.total, booking.currency_code))}
           ${row('Payment Status', booking.payment_status)}
         </table>
         <p>Your QR code is attached to this email. Please show it at the park entrance.</p>
@@ -100,6 +100,13 @@ function formatDate(value) {
     month: 'short',
     day: '2-digit',
   });
+}
+
+function formatAmount(value, currencyCode = 'USD') {
+  return `${currencyCode || 'USD'} ${Number(value || 0).toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
 }
 
 function escapeHtml(value) {

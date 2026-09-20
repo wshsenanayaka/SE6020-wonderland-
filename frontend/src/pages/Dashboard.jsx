@@ -132,6 +132,7 @@ export default function Dashboard() {
     setTicketForm({
       ticket_tier: ticketPass.ticket_tier,
       guests: ticketPass.guests,
+      currency_code: ticketPass.currency_code || 'USD',
       ticket_price_indicative: ticketPass.ticket_price_indicative,
       effective_price_per_guest: ticketPass.effective_price_per_guest,
     });
@@ -351,8 +352,13 @@ export default function Dashboard() {
           )}
 
           {isAdmin && activeSection === 'bookings' && (
-            <section className="dashboard-panel">
-              <h2>Recent Ticket Bookings</h2>
+            <section className="dashboard-panel admin-bookings-panel">
+              <div className="dashboard-panel-heading">
+                <div>
+                  <h2>Recent Ticket Bookings</h2>
+                  <p>Showing all visitor booking records from the system.</p>
+                </div>
+              </div>
               <BookingList bookings={data.recentBookings || []} />
             </section>
           )}
@@ -460,6 +466,13 @@ function TicketPassManager({
       <form className="activity-form-react ticket-pass-form" onSubmit={onSubmit}>
         <FormInput label="Ticket Tier" value={form.ticket_tier} onChange={(ticket_tier) => onChange({ ...form, ticket_tier })} />
         <FormInput label="Guests" value={form.guests} onChange={(guests) => onChange({ ...form, guests })} />
+        <label>
+          Currency
+          <select value={form.currency_code} onChange={(event) => onChange({ ...form, currency_code: event.target.value })}>
+            <option value="USD">USD</option>
+            <option value="LKR">LKR</option>
+          </select>
+        </label>
         <FormInput label="Ticket Price (indicative)" type="number" value={form.ticket_price_indicative} onChange={(ticket_price_indicative) => onChange({ ...form, ticket_price_indicative })} />
         <FormInput label="Effective Price per Guest" type="number" value={form.effective_price_per_guest} onChange={(effective_price_per_guest) => onChange({ ...form, effective_price_per_guest })} />
         <div className="form-actions">
@@ -480,6 +493,7 @@ function TicketPassTable({ ticketPasses, onDelete, onEdit }) {
           <tr>
             <th>Ticket Tier</th>
             <th>Guests</th>
+            <th>Currency</th>
             <th>Ticket Price (indicative)</th>
             <th>Effective Price per Guest</th>
             <th>Action</th>
@@ -487,14 +501,15 @@ function TicketPassTable({ ticketPasses, onDelete, onEdit }) {
         </thead>
         <tbody>
           {ticketPasses.length === 0 && (
-            <tr><td colSpan="5">No ticket passes found.</td></tr>
+            <tr><td colSpan="6">No ticket passes found.</td></tr>
           )}
           {ticketPasses.map((ticketPass) => (
             <tr key={ticketPass.id}>
               <td>{ticketPass.ticket_tier}</td>
               <td>{ticketPass.guests}</td>
-              <td>{formatTicketAmount(ticketPass.ticket_price_indicative)}</td>
-              <td>{formatTicketAmount(ticketPass.effective_price_per_guest)}</td>
+              <td>{ticketPass.currency_code || 'USD'}</td>
+              <td>{formatTicketAmount(ticketPass.ticket_price_indicative, ticketPass.currency_code)}</td>
+              <td>{formatTicketAmount(ticketPass.effective_price_per_guest, ticketPass.currency_code)}</td>
               <td>
                 <div className="table-action-row">
                   <button type="button" onClick={() => onEdit(ticketPass)}>Edit</button>
@@ -528,20 +543,92 @@ function AttractionList({ attractions }) {
 }
 
 function BookingList({ bookings }) {
+  const [searchTerm, setSearchTerm] = useState('');
+  const normalizedSearch = searchTerm.trim().toLowerCase();
+  const filteredBookings = normalizedSearch
+    ? bookings.filter((booking) => {
+        const searchableText = [
+          booking.id,
+          booking.visitor_name,
+          booking.email,
+          booking.visit_date,
+          booking.preferred_time_slot,
+          booking.ticket_label,
+          booking.ticket_type,
+          booking.quantity,
+          booking.contact_number,
+          booking.currency_code,
+          booking.total,
+          booking.booking_status,
+          booking.payment_status,
+          booking.created_at,
+        ].join(' ').toLowerCase();
+
+        return searchableText.includes(normalizedSearch);
+      })
+    : bookings;
+
   return (
-    <div className="dashboard-list">
-      {bookings.length === 0 && <span>No bookings found yet.</span>}
-      {bookings.map((booking, index) => (
-        <span key={`${booking.email}-${index}`}>
-          {booking.visitor_name || 'Visitor'} - {booking.ticket_label || booking.ticket_type}
-          {' | '}
-          Time: {booking.preferred_time_slot || '-'}
-          {' | '}
-          Booking: {booking.booking_status || 'Pending'}
-          {' | '}
-          Payment: {booking.payment_status || 'Pending'}
+    <div className="booking-records">
+      <div className="booking-filter-row">
+        <label>
+          Search Records
+          <input
+            placeholder="Search by ID, visitor, email, ticket, date, time, or status"
+            type="search"
+            value={searchTerm}
+            onChange={(event) => setSearchTerm(event.target.value)}
+          />
+        </label>
+        <span>
+          {filteredBookings.length} of {bookings.length} bookings
         </span>
-      ))}
+      </div>
+      <div className="dashboard-table">
+        <table>
+          <thead>
+            <tr>
+              <th>Booking ID</th>
+              <th>Visitor</th>
+              <th>Email</th>
+              <th>Visit Date</th>
+              <th>Time Slot</th>
+              <th>Ticket</th>
+              <th>Qty</th>
+              <th>Total</th>
+              <th>Booking</th>
+              <th>Payment</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredBookings.length === 0 && (
+              <tr><td colSpan="10">No booking records match your search.</td></tr>
+            )}
+            {filteredBookings.map((booking) => (
+              <tr key={booking.id}>
+                <td>#{booking.id}</td>
+                <td>{booking.visitor_name || 'Visitor'}</td>
+                <td>{booking.email || '-'}</td>
+                <td>{formatDisplayDate(booking.visit_date)}</td>
+                <td>{booking.preferred_time_slot || '-'}</td>
+                <td>{booking.ticket_label || booking.ticket_type}</td>
+                <td>{booking.quantity}</td>
+                <td>{formatCurrency(booking.total, booking.currency_code)}</td>
+                <td>
+                  <span className={booking.booking_status === 'Booked' ? 'status-pill enabled' : 'status-pill disabled'}>
+                    {booking.booking_status || 'Pending'}
+                  </span>
+                </td>
+                <td>
+                  <span className={booking.payment_status === 'Paid' ? 'status-pill enabled' : 'status-pill disabled'}>
+                    {booking.payment_status || 'Pending'}
+                  </span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
@@ -574,7 +661,7 @@ function VisitorBookingTable({ bookings, onDownloadQr, onResendEmail }) {
               <td>{booking.preferred_time_slot || '-'}</td>
               <td>{booking.ticket_label || booking.ticket_type}</td>
               <td>{booking.quantity}</td>
-              <td>{formatCurrency(booking.total)}</td>
+              <td>{formatCurrency(booking.total, booking.currency_code)}</td>
               <td>
                 <span className={booking.payment_status === 'Paid' ? 'status-pill enabled' : 'status-pill disabled'}>
                   {booking.payment_status === 'Paid' ? 'Paid / Booked' : 'Pending Payment'}
@@ -668,20 +755,18 @@ function HeatMap() {
   );
 }
 
-function formatTicketAmount(value) {
-  return Number(value || 0).toLocaleString('en-US', {
+function formatTicketAmount(value, currencyCode = 'USD') {
+  return `${currencyCode || 'USD'} ${Number(value || 0).toLocaleString('en-US', {
     minimumFractionDigits: 0,
     maximumFractionDigits: 2,
-  });
+  })}`;
 }
 
-function formatCurrency(value) {
-  return Number(value || 0).toLocaleString('en-US', {
-    style: 'currency',
-    currency: 'USD',
+function formatCurrency(value, currencyCode = 'USD') {
+  return `${currencyCode || 'USD'} ${Number(value || 0).toLocaleString('en-US', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
-  });
+  })}`;
 }
 
 function formatDisplayDate(value) {

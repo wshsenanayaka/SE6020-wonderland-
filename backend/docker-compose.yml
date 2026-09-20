@@ -11,7 +11,7 @@ services:
       FRONTEND_ORIGIN: http://127.0.0.1:5173
       ASSETS_DIR: /assets
     volumes:
-      - ../assets:/assets
+      - ../frontend/public/assets:/assets
     depends_on:
       - auth-service
       - user-service
@@ -44,4 +44,4 @@ services:
       FRONTEND_ORIGIN: http://127.0.0.1:5173
     volumes:
       - ../data:/data
-      - ../assets:/assets
+      - ../frontend/public/assets:/assets
