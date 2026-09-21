@@ -13,17 +13,7 @@ export async function sendBookingConfirmationEmail(booking) {
     return { sent: false, reason: 'SMTP is not configured.' };
   }
 
-  const qrPayload = [
-    'Wonderland Booking',
-    `Booking ID: ${booking.id}`,
-    `Visitor: ${booking.visitor_name}`,
-    `Email: ${booking.email}`,
-    `Ticket: ${booking.ticket_label}`,
-    `Quantity: ${booking.quantity}`,
-    `Visit Date: ${formatDate(booking.visit_date)}`,
-    `Time Slot: ${booking.preferred_time_slot || '-'}`,
-    `Payment: ${booking.payment_status}`,
-  ].join('\n');
+  const qrPayload = buildCheckInUrl(booking);
 
   const qrDataUrl = await QRCode.toDataURL(qrPayload, {
     errorCorrectionLevel: 'H',
@@ -107,6 +97,11 @@ function formatAmount(value, currencyCode = 'USD') {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
+}
+
+function buildCheckInUrl(booking) {
+  const origin = config.frontendOrigin.replace(/\/+$/, '');
+  return `${origin}/check-in/${booking.id}?token=${encodeURIComponent(booking.qr_token || '')}`;
 }
 
 function escapeHtml(value) {

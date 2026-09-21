@@ -63,14 +63,10 @@ export default function Dashboard() {
         ['manage-tickets', 'Manage Tickets'],
         ['reports', 'Reports'],
         ['bookings', 'Bookings'],
-        ['operations', 'Attraction Operations'],
-        ['heat-map', 'Park Heat Map'],
       ]
     : [
         ['overview', 'Overview'],
         ['my-bookings', 'My Bookings'],
-        ['status', 'Park Status'],
-        ['recommendations', 'Recommended Rides'],
         ['profile', 'Visitor Profile'],
       ];
 
@@ -180,15 +176,7 @@ export default function Dashboard() {
 
   async function downloadBookingQr(booking) {
     try {
-      const qrPayload = [
-        'Wonderland Booking',
-        `Booking ID: ${booking.id}`,
-        `Visitor: ${booking.visitor_name || profile.name}`,
-        `Ticket: ${booking.ticket_label || booking.ticket_type}`,
-        `Visit Date: ${formatDisplayDate(booking.visit_date)}`,
-        `Time Slot: ${booking.preferred_time_slot || '-'}`,
-        `Payment: ${booking.payment_status || 'Pending'}`,
-      ].join('\n');
+      const qrPayload = buildCheckInUrl(booking);
       const qrDataUrl = await QRCode.toDataURL(qrPayload, {
         errorCorrectionLevel: 'H',
         margin: 2,
@@ -230,7 +218,7 @@ export default function Dashboard() {
   }
 
   return (
-    <main className="dashboard-page">
+    <main className={isAdmin ? 'dashboard-page admin-dashboard' : 'dashboard-page visitor-dashboard'}>
       <div className="dashboard-layout">
         <aside className="dashboard-sidebar">
           <div className="sidebar-profile">
@@ -264,7 +252,18 @@ export default function Dashboard() {
             </section>
           )}
 
-          {activeSection === 'status' && <StatusGrid operations={data.operations} />}
+          {activeSection === 'overview' && (
+            <BookingOverviewCards
+              attractions={data.adminActivities || data.attractions || []}
+              bookings={isAdmin ? data.recentBookings || [] : data.visitorBookings || []}
+              isAdmin={isAdmin}
+              ticketPasses={data.ticketPasses || []}
+            />
+          )}
+
+          {activeSection === 'overview' && (
+            <BookingOverviewCharts bookings={isAdmin ? data.recentBookings || [] : data.visitorBookings || []} isAdmin={isAdmin} />
+          )}
 
           {!isAdmin && activeSection === 'my-bookings' && (
             <section className="dashboard-panel visitor-bookings-panel">
@@ -363,17 +362,6 @@ export default function Dashboard() {
             </section>
           )}
 
-          {isAdmin && activeSection === 'operations' && <AttractionOperations attractions={data.attractions} />}
-
-          {isAdmin && activeSection === 'heat-map' && <HeatMap />}
-
-          {!isAdmin && activeSection === 'recommendations' && (
-            <section className="dashboard-panel">
-              <h2>Recommended Attractions</h2>
-              <AttractionList attractions={data.attractions} />
-            </section>
-          )}
-
           {!isAdmin && activeSection === 'profile' && (
             <section className="dashboard-panel">
               <h2>Visitor Profile</h2>
@@ -402,6 +390,217 @@ function StatusGrid({ operations }) {
       ))}
     </section>
   );
+}
+
+function BookingOverviewCards({ attractions = [], bookings, isAdmin = false, ticketPasses = [] }) {
+  const paidBookings = bookings.filter((booking) => booking.payment_status === 'Paid');
+  const pendingBookings = bookings.filter((booking) => booking.payment_status !== 'Paid');
+  const arrivedBookings = bookings.filter((booking) => booking.checkin_status === 'Arrived');
+  const totalTickets = bookings.reduce((total, booking) => total + Number(booking.quantity || 0), 0);
+  const uniqueVisitors = new Set(bookings.map((booking) => booking.email).filter(Boolean)).size;
+  const activeAttractions = attractions.filter((activity) => Number(activity.is_visible ?? 1) === 1).length;
+  const revenueText = formatCurrencyTotals(paidBookings);
+
+  if (isAdmin) {
+    return (
+      <section className="dashboard-grid booking-overview-grid admin-overview-grid">
+        <article className="dashboard-metric admin-metric">
+          <span>Total Bookings</span>
+          <strong>{bookings.length}</strong>
+          <small>All visitor reservations</small>
+        </article>
+        <article className="dashboard-metric admin-metric">
+          <span>Visitors</span>
+          <strong>{uniqueVisitors}</strong>
+          <small>Unique booking emails</small>
+        </article>
+        <article className="dashboard-metric admin-metric">
+          <span>Paid Bookings</span>
+          <strong>{paidBookings.length}</strong>
+          <small>Payment completed</small>
+        </article>
+        <article className="dashboard-metric admin-metric">
+          <span>Pending Payments</span>
+          <strong>{pendingBookings.length}</strong>
+          <small>Awaiting payment</small>
+        </article>
+        <article className="dashboard-metric admin-metric">
+          <span>Arrived Visitors</span>
+          <strong>{arrivedBookings.length}</strong>
+          <small>Checked in at park</small>
+        </article>
+        <article className="dashboard-metric admin-metric">
+          <span>Tickets Sold</span>
+          <strong>{totalTickets}</strong>
+          <small>Total quantity booked</small>
+        </article>
+        <article className="dashboard-metric admin-metric admin-revenue-card">
+          <span>Paid Revenue</span>
+          <strong>{revenueText}</strong>
+          <small>Grouped by currency</small>
+        </article>
+        <article className="dashboard-metric admin-metric">
+          <span>Live Attractions</span>
+          <strong>{activeAttractions}</strong>
+          <small>{ticketPasses.length} ticket passes</small>
+        </article>
+      </section>
+    );
+  }
+
+  return (
+    <section className="dashboard-grid booking-overview-grid">
+      <article className="dashboard-metric">
+        <span>Booking Count</span>
+        <strong>{bookings.length}</strong>
+        <small>Total reservations</small>
+      </article>
+      <article className="dashboard-metric">
+        <span>Paid Count</span>
+        <strong>{paidBookings.length}</strong>
+        <small>Payment completed</small>
+      </article>
+      <article className="dashboard-metric">
+        <span>Pending Count</span>
+        <strong>{pendingBookings.length}</strong>
+        <small>Awaiting payment</small>
+      </article>
+      <article className="dashboard-metric">
+        <span>Arrived Count</span>
+        <strong>{arrivedBookings.length}</strong>
+        <small>Checked in at park</small>
+      </article>
+      <article className="dashboard-metric">
+        <span>Ticket Count</span>
+        <strong>{totalTickets}</strong>
+        <small>Total booked tickets</small>
+      </article>
+    </section>
+  );
+}
+
+function BookingOverviewCharts({ bookings, isAdmin = false }) {
+  const ticketRows = summarizeByTicket(bookings);
+  const revenueRows = summarizeRevenueByTicket(bookings);
+  const paymentRows = [
+    { label: 'Paid', value: bookings.filter((booking) => booking.payment_status === 'Paid').length, color: '#22b573' },
+    { label: 'Pending', value: bookings.filter((booking) => booking.payment_status !== 'Paid').length, color: '#ee3e50' },
+  ];
+  const arrivalRows = [
+    { label: 'Arrived', value: bookings.filter((booking) => booking.checkin_status === 'Arrived').length, color: '#ffc629' },
+    { label: 'Not Arrived', value: bookings.filter((booking) => booking.checkin_status !== 'Arrived').length, color: '#082640' },
+  ];
+
+  return (
+    <section className="dashboard-chart-grid">
+      <article className="dashboard-chart-panel">
+        <div className="chart-heading">
+          <span>Ticket Mix</span>
+          <strong>Bookings by Ticket Type</strong>
+        </div>
+        <BarChart rows={ticketRows} />
+      </article>
+      <article className="dashboard-chart-panel">
+        <div className="chart-heading">
+          <span>Payment Status</span>
+          <strong>Paid vs Pending</strong>
+        </div>
+        <PieChart rows={paymentRows} />
+      </article>
+      <article className="dashboard-chart-panel">
+        <div className="chart-heading">
+          <span>Arrival Status</span>
+          <strong>Arrived vs Not Arrived</strong>
+        </div>
+        <PieChart rows={arrivalRows} />
+      </article>
+      {isAdmin && (
+        <article className="dashboard-chart-panel admin-revenue-chart">
+          <div className="chart-heading">
+            <span>Revenue</span>
+            <strong>Paid Revenue by Ticket</strong>
+          </div>
+          <BarChart rows={revenueRows} valueFormatter={(value) => formatCompactNumber(value)} />
+        </article>
+      )}
+    </section>
+  );
+}
+
+function BarChart({ rows, valueFormatter = (value) => value }) {
+  const maxValue = Math.max(...rows.map((row) => row.value), 1);
+
+  if (rows.length === 0) {
+    return <div className="chart-empty">No booking data available yet.</div>;
+  }
+
+  return (
+    <div className="bar-chart">
+      {rows.map((row) => (
+        <div className="bar-chart-row" key={row.label}>
+          <span>{row.label}</span>
+          <div>
+            <i style={{ width: `${Math.max(8, (row.value / maxValue) * 100)}%` }} />
+          </div>
+          <strong>{valueFormatter(row.value)}</strong>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function PieChart({ rows }) {
+  const total = rows.reduce((sum, row) => sum + row.value, 0);
+  let current = 0;
+  const gradient = total > 0
+    ? rows.map((row) => {
+        const start = current;
+        current += (row.value / total) * 100;
+        return `${row.color} ${start}% ${current}%`;
+      }).join(', ')
+    : '#eef3f8 0% 100%';
+
+  return (
+    <div className="pie-chart-wrap">
+      <div className="pie-chart" style={{ background: `conic-gradient(${gradient})` }}>
+        <span>{total}</span>
+      </div>
+      <div className="pie-legend">
+        {rows.map((row) => (
+          <span key={row.label}>
+            <i style={{ backgroundColor: row.color }} />
+            {row.label}: {row.value}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function summarizeByTicket(bookings) {
+  const grouped = bookings.reduce((summary, booking) => {
+    const label = booking.ticket_label || booking.ticket_type || 'Ticket';
+    summary[label] = (summary[label] || 0) + 1;
+    return summary;
+  }, {});
+
+  return Object.entries(grouped)
+    .map(([label, value]) => ({ label, value }))
+    .sort((first, second) => second.value - first.value);
+}
+
+function summarizeRevenueByTicket(bookings) {
+  const grouped = bookings
+    .filter((booking) => booking.payment_status === 'Paid')
+    .reduce((summary, booking) => {
+      const label = booking.ticket_label || booking.ticket_type || 'Ticket';
+      summary[label] = (summary[label] || 0) + Number(booking.total || 0);
+      return summary;
+    }, {});
+
+  return Object.entries(grouped)
+    .map(([label, value]) => ({ label, value }))
+    .sort((first, second) => second.value - first.value);
 }
 
 function ActivityTable({ activities, onToggle }) {
@@ -561,6 +760,8 @@ function BookingList({ bookings }) {
           booking.total,
           booking.booking_status,
           booking.payment_status,
+          booking.checkin_status,
+          booking.arrived_at,
           booking.created_at,
         ].join(' ').toLowerCase();
 
@@ -598,11 +799,12 @@ function BookingList({ bookings }) {
               <th>Total</th>
               <th>Booking</th>
               <th>Payment</th>
+              <th>Arrival</th>
             </tr>
           </thead>
           <tbody>
             {filteredBookings.length === 0 && (
-              <tr><td colSpan="10">No booking records match your search.</td></tr>
+              <tr><td colSpan="11">No booking records match your search.</td></tr>
             )}
             {filteredBookings.map((booking) => (
               <tr key={booking.id}>
@@ -622,6 +824,11 @@ function BookingList({ bookings }) {
                 <td>
                   <span className={booking.payment_status === 'Paid' ? 'status-pill enabled' : 'status-pill disabled'}>
                     {booking.payment_status || 'Pending'}
+                  </span>
+                </td>
+                <td>
+                  <span className={booking.checkin_status === 'Arrived' ? 'status-pill enabled' : 'status-pill disabled'}>
+                    {booking.checkin_status || 'Not Arrived'}
                   </span>
                 </td>
               </tr>
@@ -646,13 +853,14 @@ function VisitorBookingTable({ bookings, onDownloadQr, onResendEmail }) {
             <th>Qty</th>
             <th>Total</th>
             <th>Payment</th>
+            <th>Arrival</th>
             <th>QR Code</th>
             <th>Email</th>
           </tr>
         </thead>
         <tbody>
           {bookings.length === 0 && (
-            <tr><td colSpan="9">No bookings found yet.</td></tr>
+            <tr><td colSpan="10">No bookings found yet.</td></tr>
           )}
           {bookings.map((booking) => (
             <tr key={booking.id}>
@@ -665,6 +873,11 @@ function VisitorBookingTable({ bookings, onDownloadQr, onResendEmail }) {
               <td>
                 <span className={booking.payment_status === 'Paid' ? 'status-pill enabled' : 'status-pill disabled'}>
                   {booking.payment_status === 'Paid' ? 'Paid / Booked' : 'Pending Payment'}
+                </span>
+              </td>
+              <td>
+                <span className={booking.checkin_status === 'Arrived' ? 'status-pill enabled' : 'status-pill disabled'}>
+                  {booking.checkin_status || 'Not Arrived'}
                 </span>
               </td>
               <td>
@@ -718,41 +931,28 @@ function VisitorProfile({ form, onChange, onSubmit }) {
   );
 }
 
-function AttractionOperations({ attractions }) {
-  return (
-    <section className="dashboard-panel" id="operations">
-      <h2>Attraction Operations</h2>
-      <div className="dashboard-table">
-        <table>
-          <thead><tr><th>Attraction</th><th>Zone</th><th>Wait</th><th>Status</th></tr></thead>
-          <tbody>
-            {attractions.map((ride) => (
-              <tr key={ride.id || ride.name}>
-                <td>{ride.name}</td>
-                <td>{ride.zone}</td>
-                <td>{ride.wait} min</td>
-                <td><span className="status-pill">{ride.status}</span></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </section>
-  );
+function formatCurrencyTotals(bookings) {
+  const totals = bookings.reduce((summary, booking) => {
+    const currencyCode = booking.currency_code || 'USD';
+    summary[currencyCode] = (summary[currencyCode] || 0) + Number(booking.total || 0);
+    return summary;
+  }, {});
+  const entries = Object.entries(totals);
+
+  if (entries.length === 0) {
+    return '0';
+  }
+
+  return entries
+    .map(([currencyCode, total]) => `${currencyCode} ${formatCompactNumber(total)}`)
+    .join(' / ');
 }
 
-function HeatMap() {
-  return (
-    <section className="dashboard-panel heat-map-panel" id="heat-map">
-      <h2>Park Heat Map</h2>
-      <div className="zone-grid-react">
-        <article className="zone-hot"><span>Summit Zone</span><strong>High</strong><small>Coaster demand rising</small></article>
-        <article className="zone-cool"><span>Lagoon Bay</span><strong>Medium</strong><small>Water rides flowing well</small></article>
-        <article className="zone-warm"><span>Wonder Grove</span><strong>Steady</strong><small>Family traffic balanced</small></article>
-        <article className="zone-live"><span>Discovery Hub</span><strong>Live</strong><small>Show activity active</small></article>
-      </div>
-    </section>
-  );
+function formatCompactNumber(value) {
+  return Number(value || 0).toLocaleString('en-US', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 1,
+  });
 }
 
 function formatTicketAmount(value, currencyCode = 'USD') {
@@ -779,4 +979,9 @@ function formatDisplayDate(value) {
     month: 'short',
     day: '2-digit',
   });
+}
+
+function buildCheckInUrl(booking) {
+  const token = encodeURIComponent(booking.qr_token || '');
+  return `${window.location.origin}/check-in/${booking.id}?token=${token}`;
 }

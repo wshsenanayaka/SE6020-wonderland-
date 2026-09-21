@@ -63,6 +63,10 @@ export const api = {
     method: 'POST',
     body: JSON.stringify({}),
   }),
+  checkInBooking: (bookingId, qrToken) => request(`/api/business/bookings/${bookingId}/check-in`, {
+    method: 'POST',
+    body: JSON.stringify({ qr_token: qrToken }),
+  }),
   createTicketPass: (data) => request('/api/business/ticket-passes', {
     method: 'POST',
     body: JSON.stringify(data),

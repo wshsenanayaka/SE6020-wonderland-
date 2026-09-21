@@ -268,6 +268,35 @@ export const openApiSpec = {
         },
       },
     },
+    '/api/business/bookings/{id}/check-in': {
+      post: {
+        tags: ['Bookings'],
+        summary: 'Mark a paid booking as arrived after scanning the QR code',
+        parameters: [
+          { $ref: '#/components/parameters/IdPath' },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/BookingCheckInRequest' },
+            },
+          },
+        },
+        responses: {
+          200: {
+            description: 'Arrival confirmed or booking was already arrived',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/BookingCheckInResponse' },
+              },
+            },
+          },
+          404: { $ref: '#/components/responses/NotFound' },
+          422: { $ref: '#/components/responses/ValidationError' },
+        },
+      },
+    },
     '/api/business/stripe/confirm-session': {
       post: {
         tags: ['Payments'],
@@ -679,6 +708,25 @@ export const openApiSpec = {
           checkout_url: { type: 'string', format: 'uri', example: 'https://checkout.stripe.com/c/pay/cs_test_...' },
         },
       },
+      BookingCheckInRequest: {
+        type: 'object',
+        required: ['qr_token'],
+        properties: {
+          qr_token: { type: 'string', example: '3d0f6fc9-c9f6-4d0c-bf24-9808dd04d3a1' },
+        },
+      },
+      BookingCheckInResponse: {
+        allOf: [
+          { $ref: '#/components/schemas/MessageResponse' },
+          {
+            type: 'object',
+            properties: {
+              already_arrived: { type: 'boolean', example: false },
+              booking: { $ref: '#/components/schemas/Booking' },
+            },
+          },
+        ],
+      },
       Booking: {
         type: 'object',
         properties: {
@@ -695,6 +743,9 @@ export const openApiSpec = {
           total: { type: 'number', example: 48 },
           payment_status: { type: 'string', example: 'Paid' },
           booking_status: { type: 'string', example: 'Booked' },
+          qr_token: { type: 'string', example: '3d0f6fc9-c9f6-4d0c-bf24-9808dd04d3a1' },
+          checkin_status: { type: 'string', example: 'Arrived' },
+          arrived_at: { type: 'string', nullable: true, example: '2026-09-21T10:30:00.000Z' },
           qr_code_path: { type: 'string', example: 'assets/qrcodes/booking-1.png' },
           stripe_session_id: { type: 'string', example: 'cs_test_...' },
           created_at: { type: 'string', example: '2026-09-20T10:00:00.000Z' },

@@ -9,6 +9,7 @@ import Register from './pages/Register.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import PaymentSuccess from './pages/PaymentSuccess.jsx';
 import PaymentCancel from './pages/PaymentCancel.jsx';
+import CheckIn from './pages/CheckIn.jsx';
 
 export default function App() {
   const { data, notice, error } = useApp();
@@ -33,6 +34,7 @@ export default function App() {
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/payment-success" element={<PaymentSuccess />} />
         <Route path="/payment-cancel" element={<PaymentCancel />} />
+        <Route path="/check-in/:bookingId" element={<CheckIn />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       <Footer />

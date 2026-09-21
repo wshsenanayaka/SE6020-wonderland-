@@ -773,6 +773,61 @@ textarea {
   font-size: 14px;
 }
 
+.checkin-page {
+  min-height: calc(100vh - 64px);
+  display: grid;
+  place-items: center;
+  padding: 72px 24px;
+  background:
+    linear-gradient(180deg, rgba(234, 243, 251, 0.96), rgba(247, 249, 252, 1)),
+    url("/assets/images/wonderland-hero.png") center/cover fixed;
+}
+
+.checkin-card {
+  width: min(100%, 560px);
+  padding: 34px;
+  border: 1px solid var(--line);
+  border-top: 8px solid var(--coral);
+  border-radius: 10px;
+  background: #ffffff;
+  box-shadow: var(--shadow);
+}
+
+.checkin-card.success {
+  border-top-color: #22b573;
+}
+
+.checkin-card.failed {
+  border-top-color: var(--coral);
+}
+
+.checkin-card h1 {
+  margin: 8px 0 12px;
+  color: var(--navy);
+  font-size: 34px;
+  line-height: 1.1;
+}
+
+.checkin-card p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+.checkin-details {
+  display: grid;
+  gap: 10px;
+  margin: 24px 0;
+  padding: 18px;
+  border-radius: 8px;
+  background: #f4f8fd;
+}
+
+.checkin-details span {
+  color: #314057;
+  font-size: 13px;
+}
+
 .dashboard-layout {
   display: grid;
   grid-template-columns: 260px minmax(0, 1fr);
@@ -874,6 +929,34 @@ textarea {
   line-height: 1.7;
 }
 
+.admin-dashboard .dashboard-hero {
+  position: relative;
+  overflow: hidden;
+  background:
+    linear-gradient(135deg, rgba(3, 27, 47, 0.98), rgba(8, 38, 64, 0.90)),
+    url("/assets/images/wonderland-hero.png") center/cover;
+}
+
+.admin-dashboard .dashboard-hero::after {
+  content: "";
+  position: absolute;
+  inset: auto -10% -35% 44%;
+  height: 260px;
+  background: radial-gradient(circle, rgba(255, 201, 40, 0.28), transparent 68%);
+  pointer-events: none;
+}
+
+.admin-dashboard .dashboard-hero h1,
+.admin-dashboard .dashboard-hero p {
+  position: relative;
+  z-index: 1;
+  color: #ffffff;
+}
+
+.admin-dashboard .dashboard-hero p {
+  color: rgba(255, 255, 255, 0.74);
+}
+
 .dashboard-hero button,
 .dashboard-action {
   min-height: 44px;
@@ -895,6 +978,173 @@ textarea {
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 20px;
   margin-top: 24px;
+}
+
+.booking-overview-grid {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.admin-overview-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.admin-metric {
+  min-height: 146px;
+  border-top: 5px solid var(--yellow);
+}
+
+.admin-metric:nth-child(3n + 1) {
+  border-top-color: var(--coral);
+}
+
+.admin-metric:nth-child(3n + 2) {
+  border-top-color: var(--teal);
+}
+
+.admin-revenue-card {
+  grid-column: span 2;
+}
+
+.admin-revenue-card strong {
+  font-size: 24px;
+  line-height: 1.2;
+}
+
+.dashboard-chart-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) repeat(2, minmax(220px, 0.7fr));
+  gap: 20px;
+  margin-top: 24px;
+}
+
+.admin-dashboard .dashboard-chart-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.dashboard-chart-panel {
+  min-height: 280px;
+  padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #ffffff;
+  box-shadow: 0 12px 28px rgba(10, 31, 52, 0.08);
+}
+
+.chart-heading {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 22px;
+}
+
+.chart-heading span {
+  color: var(--coral);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.chart-heading strong {
+  color: var(--navy);
+  font-size: 18px;
+  line-height: 1.2;
+}
+
+.bar-chart {
+  display: grid;
+  gap: 16px;
+}
+
+.bar-chart-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.8fr) minmax(120px, 1.5fr) 40px;
+  align-items: center;
+  gap: 12px;
+}
+
+.bar-chart-row span {
+  color: #314057;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.bar-chart-row div {
+  height: 18px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #edf4fb;
+}
+
+.bar-chart-row i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--coral), var(--yellow));
+}
+
+.bar-chart-row strong {
+  color: var(--navy);
+  font-size: 13px;
+  text-align: right;
+}
+
+.pie-chart-wrap {
+  display: grid;
+  justify-items: center;
+  gap: 20px;
+}
+
+.pie-chart {
+  width: 150px;
+  height: 150px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 18px rgba(255, 255, 255, 0.72);
+}
+
+.pie-chart span {
+  width: 80px;
+  height: 80px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #ffffff;
+  color: var(--navy);
+  font-size: 26px;
+  font-weight: 900;
+}
+
+.pie-legend {
+  display: grid;
+  gap: 10px;
+  width: 100%;
+}
+
+.pie-legend span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #314057;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.pie-legend i {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 auto;
+  border-radius: 3px;
+}
+
+.chart-empty {
+  display: grid;
+  min-height: 160px;
+  place-items: center;
+  border-radius: 8px;
+  background: #f4f8fd;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 900;
 }
 
 .dashboard-metric,
@@ -1378,6 +1628,7 @@ textarea {
   .cards-grid,
   .metric-grid,
   .dashboard-grid,
+  .dashboard-chart-grid,
   .dashboard-panels,
   .zone-grid-react {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1421,6 +1672,7 @@ textarea {
   .cards-grid,
   .metric-grid,
   .dashboard-grid,
+  .dashboard-chart-grid,
   .dashboard-panels,
   .zone-grid-react {
     grid-template-columns: 1fr;
@@ -1444,6 +1696,14 @@ textarea {
 
   .bar-row {
     grid-template-columns: 1fr;
+  }
+
+  .bar-chart-row {
+    grid-template-columns: 1fr;
+  }
+
+  .bar-chart-row strong {
+    text-align: left;
   }
 
   .dashboard-page {

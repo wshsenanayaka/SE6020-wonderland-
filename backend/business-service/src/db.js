@@ -115,6 +115,9 @@ async function ensureDatabase() {
         stripe_payment_intent_id VARCHAR(160) NULL,
         payment_status VARCHAR(40) NOT NULL DEFAULT 'Pending',
         paid_at DATETIME NULL,
+        qr_token VARCHAR(80) NULL,
+        checkin_status VARCHAR(30) NOT NULL DEFAULT 'Not Arrived',
+        arrived_at DATETIME NULL,
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
         INDEX idx_ticket_bookings_tb_email (email),
@@ -152,6 +155,22 @@ async function ensureDatabase() {
       'paid_at',
       'ALTER TABLE ticket_bookings_tb ADD COLUMN paid_at DATETIME NULL AFTER payment_status',
     );
+    await ensureColumn(
+      'ticket_bookings_tb',
+      'qr_token',
+      'ALTER TABLE ticket_bookings_tb ADD COLUMN qr_token VARCHAR(80) NULL AFTER paid_at',
+    );
+    await ensureColumn(
+      'ticket_bookings_tb',
+      'checkin_status',
+      "ALTER TABLE ticket_bookings_tb ADD COLUMN checkin_status VARCHAR(30) NOT NULL DEFAULT 'Not Arrived' AFTER qr_token",
+    );
+    await ensureColumn(
+      'ticket_bookings_tb',
+      'arrived_at',
+      'ALTER TABLE ticket_bookings_tb ADD COLUMN arrived_at DATETIME NULL AFTER checkin_status',
+    );
+    await pool.query("UPDATE ticket_bookings_tb SET qr_token = UUID() WHERE qr_token IS NULL OR qr_token = ''");
   })();
 
   return ready;
