@@ -18,6 +18,18 @@ export default function Header() {
       .catch((requestError) => setError(requestError.message));
   }
 
+  function handleBookTickets() {
+    if (!isHome) {
+      navigate('/#tickets');
+      window.setTimeout(() => {
+        document.getElementById('tickets')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 80);
+      return;
+    }
+
+    document.getElementById('tickets')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
   return (
     <header className="topbar">
       <Link className="brand brand-button" to="/" aria-label="Wonderland home">
@@ -45,7 +57,7 @@ export default function Header() {
             <NavLink to="/register">Register</NavLink>
           </>
         )}
-        <Link className="book-link" to="/#booking">Book Tickets</Link>
+        <button className="book-link" type="button" onClick={handleBookTickets}>Book Tickets</button>
       </nav>
     </header>
   );

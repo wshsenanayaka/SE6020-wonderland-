@@ -5,6 +5,7 @@ import { manageActivity } from '../controllers/activityController.js';
 import { bookTicket } from '../controllers/bookingController.js';
 import { checkInTicketBooking } from '../controllers/checkInController.js';
 import { resendBookingEmail } from '../controllers/emailController.js';
+import { updateLiveParkInfoController } from '../controllers/liveParkInfoController.js';
 import { platformData } from '../controllers/platformController.js';
 import { confirmStripeSession } from '../controllers/stripeController.js';
 import {
@@ -23,6 +24,7 @@ router.post('/bookings/:id/check-in', checkInTicketBooking);
 router.post('/bookings/:id/resend-email', resendBookingEmail);
 router.post('/stripe/confirm-session', confirmStripeSession);
 router.post('/activities', upload.single('background_image'), manageActivity);
+router.put('/live-park-info', updateLiveParkInfoController);
 router.get('/ticket-passes', listTicketPasses);
 router.post('/ticket-passes', createTicketPassController);
 router.put('/ticket-passes/:id', updateTicketPassController);

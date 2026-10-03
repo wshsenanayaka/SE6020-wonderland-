@@ -13,6 +13,7 @@ export default function Dashboard() {
   const [ticketForm, setTicketForm] = useState(emptyTicketPass);
   const [editingTicketId, setEditingTicketId] = useState(null);
   const [activeSection, setActiveSection] = useState('overview');
+  const [liveInfoForm, setLiveInfoForm] = useState({ operations: [], behaviourMix: [] });
   const [visitorForm, setVisitorForm] = useState({
     full_name: profile.name || '',
     email: profile.email || '',
@@ -42,6 +43,23 @@ export default function Dashboard() {
       });
   }, [profile]);
 
+  useEffect(() => {
+    setLiveInfoForm({
+      operations: (data.operations || [])
+        .filter((item) => ['avg_wait_time', 'ride_uptime'].includes(item.metric_key))
+        .map((item, index) => ({
+        ...item,
+        sort_order: item.sort_order || index + 1,
+        status: Number(item.status ?? 1),
+      })),
+      behaviourMix: (data.behaviourMix || []).map((item, index) => ({
+        ...item,
+        sort_order: item.sort_order || index + 1,
+        status: Number(item.status ?? 1),
+      })),
+    });
+  }, [data.operations, data.behaviourMix]);
+
   if (!profile.isLoggedIn) {
     return (
       <main className="dashboard-page">
@@ -60,6 +78,7 @@ export default function Dashboard() {
     ? [
         ['overview', 'Overview'],
         ['manage-activities', 'Manage Activities'],
+        ['live-info', 'Live Park Info'],
         ['manage-tickets', 'Manage Tickets'],
         ['reports', 'Reports'],
         ['bookings', 'Bookings'],
@@ -217,6 +236,19 @@ export default function Dashboard() {
       .catch((requestError) => setError(requestError.message));
   }
 
+  function submitLiveParkInfo(event) {
+    event.preventDefault();
+    setNotice('');
+    setError('');
+
+    api.updateLiveParkInfo({ operations: liveInfoForm.operations })
+      .then((payload) => {
+        setNotice(payload.message);
+        return reloadPlatformData();
+      })
+      .catch((requestError) => setError(requestError.message));
+  }
+
   return (
     <main className={isAdmin ? 'dashboard-page admin-dashboard' : 'dashboard-page visitor-dashboard'}>
       <div className="dashboard-layout">
@@ -328,6 +360,14 @@ export default function Dashboard() {
               </form>
               <ActivityTable activities={data.adminActivities || []} onToggle={toggleActivity} />
             </section>
+          )}
+
+          {isAdmin && activeSection === 'live-info' && (
+            <LiveParkInfoManager
+              form={liveInfoForm}
+              onChange={setLiveInfoForm}
+              onSubmit={submitLiveParkInfo}
+            />
           )}
 
           {isAdmin && activeSection === 'manage-tickets' && (
@@ -641,6 +681,51 @@ function ActivityTable({ activities, onToggle }) {
         </tbody>
       </table>
     </div>
+  );
+}
+
+function LiveParkInfoManager({ form, onChange, onSubmit }) {
+  function updateOperation(index, field, value) {
+    const operations = form.operations.map((item, itemIndex) => (
+      itemIndex === index ? { ...item, [field]: value } : item
+    ));
+    onChange({ ...form, operations });
+  }
+
+  return (
+    <section className="dashboard-panel manage-live-info-panel">
+      <div className="dashboard-panel-heading">
+        <div>
+          <h2>Manage Live Park Information</h2>
+          <p>Visitors In Park and Tickets Today are calculated from bookings. Update only the admin-controlled live operations values here.</p>
+        </div>
+      </div>
+      <form onSubmit={onSubmit}>
+        <div className="live-info-block">
+          <h3>Admin-Controlled Metrics</h3>
+          <div className="live-info-grid">
+            {form.operations.map((item, index) => (
+              <article className="live-info-editor" key={item.metric_key || index}>
+                <FormInput label="Card Label" value={item.label} onChange={(label) => updateOperation(index, 'label', label)} />
+                <FormInput label="Card Value" value={item.value} onChange={(value) => updateOperation(index, 'value', value)} />
+                <FormInput label="Trend" value={item.trend || ''} onChange={(trend) => updateOperation(index, 'trend', trend)} />
+              </article>
+            ))}
+          </div>
+        </div>
+
+        <div className="live-info-block">
+          <h3>Auto-Calculated Values</h3>
+          <div className="live-info-note-grid">
+            <article>Visitors In Park is calculated from paid visitors scanned as arrived today.</article>
+            <article>Tickets Today is calculated from paid tickets with today's visit date.</article>
+            <article>Behaviour Mix is calculated from paid booking quantities by ticket type.</article>
+          </div>
+        </div>
+
+        <button className="live-info-submit" type="submit">Update Live Park Information</button>
+      </form>
+    </section>
   );
 }
 

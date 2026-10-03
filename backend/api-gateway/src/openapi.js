@@ -352,6 +352,32 @@ export const openApiSpec = {
         },
       },
     },
+    '/api/business/live-park-info': {
+      put: {
+        tags: ['Platform'],
+        summary: 'Update admin-controlled Wonderland Today operation metrics',
+        security: [{ cookieAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/LiveParkInfoInput' },
+            },
+          },
+        },
+        responses: {
+          200: {
+            description: 'Live park information updated',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/LiveParkInfoResponse' },
+              },
+            },
+          },
+          403: { $ref: '#/components/responses/Forbidden' },
+        },
+      },
+    },
     '/api/business/ticket-passes': {
       get: {
         tags: ['Ticket Passes'],
@@ -603,6 +629,8 @@ export const openApiSpec = {
           ticketTypes: { type: 'object', additionalProperties: { $ref: '#/components/schemas/TicketType' } },
           recentBookings: { type: 'array', items: { $ref: '#/components/schemas/Booking' } },
           visitorBookings: { type: 'array', items: { $ref: '#/components/schemas/Booking' } },
+          operations: { type: 'array', items: { $ref: '#/components/schemas/ParkOperationMetric' } },
+          behaviourMix: { type: 'array', items: { $ref: '#/components/schemas/BehaviourMixItem' } },
           profile: { $ref: '#/components/schemas/Profile' },
           auth: {
             type: 'object',
@@ -611,6 +639,52 @@ export const openApiSpec = {
             },
           },
         },
+      },
+      ParkOperationMetric: {
+        type: 'object',
+        properties: {
+          id: { type: 'integer', example: 1 },
+          metric_key: { type: 'string', example: 'visitors_in_park' },
+          label: { type: 'string', example: 'Visitors In Park' },
+          value: { type: 'string', example: '12,480' },
+          trend: { type: 'string', example: '+18%' },
+          sort_order: { type: 'integer', example: 1 },
+          status: { type: 'integer', example: 1 },
+        },
+      },
+      BehaviourMixItem: {
+        type: 'object',
+        properties: {
+          id: { type: 'integer', example: 1 },
+          mix_key: { type: 'string', example: 'thrill_seekers' },
+          label: { type: 'string', example: 'Thrill seekers' },
+          value: { type: 'integer', example: 42 },
+          color: { type: 'string', example: '#ff5a3d' },
+          sort_order: { type: 'integer', example: 1 },
+          status: { type: 'integer', example: 1 },
+        },
+      },
+      LiveParkInfoInput: {
+        type: 'object',
+        properties: {
+          operations: {
+            type: 'array',
+            description: 'Only admin-controlled metrics such as avg_wait_time and ride_uptime are updated. Booking-derived metrics are ignored.',
+            items: { $ref: '#/components/schemas/ParkOperationMetric' },
+          },
+        },
+      },
+      LiveParkInfoResponse: {
+        allOf: [
+          { $ref: '#/components/schemas/MessageResponse' },
+          {
+            type: 'object',
+            properties: {
+              operations: { type: 'array', items: { $ref: '#/components/schemas/ParkOperationMetric' } },
+              behaviourMix: { type: 'array', items: { $ref: '#/components/schemas/BehaviourMixItem' } },
+            },
+          },
+        ],
       },
       AttractionCard: {
         type: 'object',

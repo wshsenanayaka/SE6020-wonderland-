@@ -1,6 +1,7 @@
-import { behaviourMix, operations, parkStats } from '../data/defaultData.js';
+import { parkStats } from '../data/defaultData.js';
 import { allActivities, toPublicCard, visibleActivities } from '../services/activityService.js';
 import { bookingsByVisitorEmail, recentBookings } from '../services/bookingService.js';
+import { liveParkInfo } from '../services/liveParkInfoService.js';
 import { allTicketPasses, toTicketTypesMap } from '../services/ticketPassService.js';
 
 export async function platformData(request, response) {
@@ -8,6 +9,7 @@ export async function platformData(request, response) {
   const visible = await visibleActivities();
   const ticketPasses = await allTicketPasses();
   const bookings = await recentBookings();
+  const liveInfo = await liveParkInfo();
   const profileName = request.cookies.wonderland_profile_name || '';
   const profileEmail = request.cookies.wonderland_profile_email || '';
   const profileContact = request.cookies.wonderland_profile_contact || '';
@@ -21,9 +23,9 @@ export async function platformData(request, response) {
     adminActivities: activities.map(toPublicCard),
     ticketPasses,
     ticketTypes: toTicketTypesMap(ticketPasses),
-    operations,
+    operations: liveInfo.operations,
     parkStats,
-    behaviourMix,
+    behaviourMix: liveInfo.behaviourMix,
     recentBookings: bookings,
     visitorBookings,
     profile: {

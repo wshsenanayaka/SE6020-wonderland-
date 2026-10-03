@@ -78,6 +78,10 @@ export const api = {
   deleteTicketPass: (id) => request(`/api/business/ticket-passes/${id}`, {
     method: 'DELETE',
   }),
+  updateLiveParkInfo: (data) => request('/api/business/live-park-info', {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  }),
   login: (data) => request('/api/auth/login', {
     method: 'POST',
     body: JSON.stringify(data),

@@ -1235,6 +1235,91 @@ textarea {
   margin-top: 24px;
 }
 
+.manage-live-info-panel {
+  margin-top: 24px;
+}
+
+.live-info-block {
+  display: grid;
+  gap: 16px;
+  margin-top: 22px;
+}
+
+.live-info-block h3 {
+  margin: 0;
+  color: var(--navy);
+  font-size: 18px;
+}
+
+.live-info-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.live-info-editor {
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fbff;
+}
+
+.live-info-editor label {
+  display: block;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.live-info-editor input {
+  width: 100%;
+  height: 44px;
+  margin-top: 8px;
+  padding: 0 12px;
+  border: 1px solid #d6e0ea;
+  border-radius: 7px;
+  background: #ffffff;
+  color: var(--ink);
+}
+
+.live-info-editor input[type="color"] {
+  padding: 4px;
+}
+
+.live-info-note-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.live-info-note-grid article {
+  min-height: 92px;
+  display: flex;
+  align-items: center;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-left: 5px solid var(--yellow);
+  border-radius: 8px;
+  background: #f8fbff;
+  color: #314057;
+  font-size: 13px;
+  font-weight: 900;
+  line-height: 1.5;
+}
+
+.live-info-submit {
+  min-height: 44px;
+  margin-top: 22px;
+  padding: 0 20px;
+  border: 0;
+  border-radius: 7px;
+  background: var(--coral);
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
 .activity-form-react {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1638,6 +1723,7 @@ textarea {
   .account-grid,
   .booking-form,
   .auth-page,
+  .live-info-note-grid,
   .activity-form-react {
     grid-template-columns: 1fr;
   }

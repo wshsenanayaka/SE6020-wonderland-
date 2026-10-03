@@ -171,6 +171,38 @@ async function ensureDatabase() {
       'ALTER TABLE ticket_bookings_tb ADD COLUMN arrived_at DATETIME NULL AFTER checkin_status',
     );
     await pool.query("UPDATE ticket_bookings_tb SET qr_token = UUID() WHERE qr_token IS NULL OR qr_token = ''");
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS park_operations_tb (
+        id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        metric_key VARCHAR(80) NOT NULL UNIQUE,
+        label VARCHAR(80) NOT NULL,
+        value VARCHAR(40) NOT NULL,
+        trend VARCHAR(40) NULL,
+        sort_order INT UNSIGNED NOT NULL DEFAULT 0,
+        status TINYINT(1) NOT NULL DEFAULT 1,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_park_operations_status (status),
+        INDEX idx_park_operations_sort (sort_order)
+      )
+    `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS behaviour_mix_tb (
+        id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        mix_key VARCHAR(80) NOT NULL UNIQUE,
+        label VARCHAR(80) NOT NULL,
+        value INT UNSIGNED NOT NULL DEFAULT 0,
+        color VARCHAR(20) NOT NULL DEFAULT '#ee3e50',
+        sort_order INT UNSIGNED NOT NULL DEFAULT 0,
+        status TINYINT(1) NOT NULL DEFAULT 1,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_behaviour_mix_status (status),
+        INDEX idx_behaviour_mix_sort (sort_order)
+      )
+    `);
   })();
 
   return ready;
