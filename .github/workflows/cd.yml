@@ -47,7 +47,6 @@ jobs:
     name: Deploy AWS infrastructure and application
     needs: validate
     runs-on: ubuntu-latest
-    environment: production
 
     steps:
       - name: Check out source
