@@ -77,6 +77,36 @@ Resources:
                 Resource:
                   Fn::Sub: 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${ProjectName}-*'
 
+              # Route 53 requires wildcard resources for hosted-zone creation and discovery.
+              - Sid: DiscoverAndCreatePrivateHostedZones
+                Effect: Allow
+                Action:
+                  - route53:CreateHostedZone
+                  - route53:GetHostedZoneCount
+                  - route53:ListHostedZones
+                  - route53:ListHostedZonesByName
+                  - route53:ListHostedZonesByVPC
+                Resource: '*'
+
+              # Existing hosted-zone actions are constrained to Route 53 hosted zones.
+              - Sid: ManageCloudMapPrivateHostedZones
+                Effect: Allow
+                Action:
+                  - route53:AssociateVPCWithHostedZone
+                  - route53:ChangeResourceRecordSets
+                  - route53:ChangeTagsForResource
+                  - route53:DeleteHostedZone
+                  - route53:DisassociateVPCFromHostedZone
+                  - route53:GetHostedZone
+                  - route53:ListResourceRecordSets
+                  - route53:ListTagsForResource
+                Resource: !Sub 'arn:${AWS::Partition}:route53:::hostedzone/*'
+
+              - Sid: ReadHostedZoneChanges
+                Effect: Allow
+                Action: route53:GetChange
+                Resource: !Sub 'arn:${AWS::Partition}:route53:::change/*'
+
               - Sid: CreateRequiredServiceLinkedRoles
                 Effect: Allow
                 Action:
