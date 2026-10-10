@@ -43,11 +43,16 @@ Parameters:
     Default: 'false'
     AllowedValues: ['true', 'false']
     Description: Set to true after CI/CD has pushed the first images to ECR.
+  ApiOriginDomain:
+    Type: String
+    Default: ''
+    Description: Optional EKS ALB DNS name. Leave empty to retain the ECS API origin.
 
 Conditions:
   ShouldCreateApplicationServices: !Equals [!Ref CreateApplicationServices, 'true']
   IsProductionDatabase: !Equals [!Ref DatabaseProtectionMode, production]
   IsDevelopmentDatabase: !Equals [!Ref DatabaseProtectionMode, development]
+  HasApiOriginOverride: !Not [!Equals [!Ref ApiOriginDomain, '']]
 
 Resources:
   Vpc:
@@ -83,6 +88,10 @@ Resources:
       Tags:
         - Key: Name
           Value: !Sub '${ProjectName}-${EnvironmentName}-public-a'
+        - Key: !Sub 'kubernetes.io/cluster/${ProjectName}-${EnvironmentName}-eks'
+          Value: shared
+        - Key: kubernetes.io/role/elb
+          Value: '1'
 
   PublicSubnetTwo:
     Type: AWS::EC2::Subnet
@@ -94,6 +103,10 @@ Resources:
       Tags:
         - Key: Name
           Value: !Sub '${ProjectName}-${EnvironmentName}-public-b'
+        - Key: !Sub 'kubernetes.io/cluster/${ProjectName}-${EnvironmentName}-eks'
+          Value: shared
+        - Key: kubernetes.io/role/elb
+          Value: '1'
 
   PrivateSubnetOne:
     Type: AWS::EC2::Subnet
@@ -104,6 +117,10 @@ Resources:
       Tags:
         - Key: Name
           Value: !Sub '${ProjectName}-${EnvironmentName}-private-a'
+        - Key: !Sub 'kubernetes.io/cluster/${ProjectName}-${EnvironmentName}-eks'
+          Value: shared
+        - Key: kubernetes.io/role/internal-elb
+          Value: '1'
 
   PrivateSubnetTwo:
     Type: AWS::EC2::Subnet
@@ -114,6 +131,10 @@ Resources:
       Tags:
         - Key: Name
           Value: !Sub '${ProjectName}-${EnvironmentName}-private-b'
+        - Key: !Sub 'kubernetes.io/cluster/${ProjectName}-${EnvironmentName}-eks'
+          Value: shared
+        - Key: kubernetes.io/role/internal-elb
+          Value: '1'
 
   PublicRouteTable:
     Type: AWS::EC2::RouteTable
@@ -462,7 +483,10 @@ Resources:
             OriginAccessControlId: !Ref CloudFrontOriginAccessControl
             S3OriginConfig: {}
           - Id: api-load-balancer
-            DomainName: !GetAtt PublicLoadBalancer.DNSName
+            DomainName: !If
+              - HasApiOriginOverride
+              - !Ref ApiOriginDomain
+              - !GetAtt PublicLoadBalancer.DNSName
             CustomOriginConfig:
               HTTPPort: 80
               HTTPSPort: 443
@@ -813,6 +837,30 @@ Outputs:
   EcsClusterName:
     Description: ECS cluster used by the deployment workflow.
     Value: !Ref EcsCluster
+  VpcId:
+    Description: VPC reused by the EKS migration stack.
+    Value: !Ref Vpc
+  PublicSubnetOneId:
+    Description: First public subnet reused by EKS worker nodes and public ALBs.
+    Value: !Ref PublicSubnetOne
+  PublicSubnetTwoId:
+    Description: Second public subnet reused by EKS worker nodes and public ALBs.
+    Value: !Ref PublicSubnetTwo
+  PrivateSubnetOneId:
+    Description: First private subnet used by the EKS control plane.
+    Value: !Ref PrivateSubnetOne
+  PrivateSubnetTwoId:
+    Description: Second private subnet used by the EKS control plane.
+    Value: !Ref PrivateSubnetTwo
+  DatabaseSecurityGroupId:
+    Description: Existing RDS security group updated by the EKS stack to allow node access.
+    Value: !Ref DatabaseSecurityGroup
+  DatabaseApplicationUsername:
+    Description: Database username used by the application workloads.
+    Value: !Ref DatabaseUsername
+  DatabaseApplicationName:
+    Description: Database name used by the application workloads.
+    Value: !Ref DatabaseName
   ApplicationSecretsArn:
     Description: Store Stripe and SMTP values in this Secrets Manager secret JSON.
     Value: !Ref ApplicationSecrets

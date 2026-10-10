@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wonderland-config
+  namespace: wonderland
+data:
+  DB_HOST: __DATABASE_HOST__
+  DB_PORT: "3306"
+  DB_USER: __DATABASE_USER__
+  DB_NAME: __DATABASE_NAME__
+  FRONTEND_ORIGIN: __FRONTEND_ORIGIN__
+  AUTH_SERVICE_URL: http://auth-service.wonderland.svc.cluster.local:4001
+  USER_SERVICE_URL: http://user-service.wonderland.svc.cluster.local:4002
+  BUSINESS_SERVICE_URL: http://business-service.wonderland.svc.cluster.local:4003

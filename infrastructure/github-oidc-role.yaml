@@ -60,6 +60,34 @@ Resources:
                   - s3:*
                   - cloudfront:*
                 Resource: '*'
+              - Sid: ManageWonderlandEks
+                Effect: Allow
+                Action:
+                  - eks:CreateCluster
+                  - eks:DeleteCluster
+                  - eks:DescribeCluster
+                  - eks:UpdateClusterConfig
+                  - eks:UpdateClusterVersion
+                  - eks:DescribeUpdate
+                  - eks:ListUpdates
+                  - eks:CreateNodegroup
+                  - eks:DeleteNodegroup
+                  - eks:DescribeNodegroup
+                  - eks:ListNodegroups
+                  - eks:UpdateNodegroupConfig
+                  - eks:UpdateNodegroupVersion
+                  - eks:CreateAddon
+                  - eks:DeleteAddon
+                  - eks:DescribeAddon
+                  - eks:UpdateAddon
+                  - eks:CreatePodIdentityAssociation
+                  - eks:DeletePodIdentityAssociation
+                  - eks:DescribePodIdentityAssociation
+                  - eks:ListPodIdentityAssociations
+                  - eks:TagResource
+                  - eks:UntagResource
+                  - eks:ListTagsForResource
+                Resource: '*'
 
               - Sid: ManageWonderlandTaskRoles
                 Effect: Allow

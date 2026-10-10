@@ -357,6 +357,8 @@ The project includes a GitHub Actions CI/CD pipeline and AWS CloudFormation auto
 
 Read the setup and security instructions in [docs/CI-CD.md](docs/CI-CD.md).
 
+The opt-in EKS/EC2/Kubernetes migration, cost estimate, approval gate, verification commands, and ECS retirement plan are in [docs/EKS-MIGRATION.md](docs/EKS-MIGRATION.md).
+
 ## Default Login
 
 Administrator:

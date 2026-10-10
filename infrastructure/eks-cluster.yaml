@@ -1,0 +1,309 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Wonderland EKS migration stack. Reuses the existing application VPC, RDS instance, ECR repositories, S3 bucket, and CloudFront distribution.
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: wonderland
+    AllowedPattern: '^[a-z][a-z0-9-]{2,30}$'
+  EnvironmentName:
+    Type: String
+    Default: production
+    AllowedPattern: '^[a-z][a-z0-9-]{2,30}$'
+  KubernetesVersion:
+    Type: String
+    Default: '1.35'
+    Description: Use an EKS version in standard support for the selected region.
+  ExistingVpcId:
+    Type: AWS::EC2::VPC::Id
+  ExistingPublicSubnetOneId:
+    Type: AWS::EC2::Subnet::Id
+  ExistingPublicSubnetTwoId:
+    Type: AWS::EC2::Subnet::Id
+  ExistingPrivateSubnetOneId:
+    Type: AWS::EC2::Subnet::Id
+  ExistingPrivateSubnetTwoId:
+    Type: AWS::EC2::Subnet::Id
+  ExistingDatabaseSecurityGroupId:
+    Type: AWS::EC2::SecurityGroup::Id
+  NodeInstanceType:
+    Type: String
+    Default: t3.medium
+    Description: Two vCPUs and four GiB RAM; suitable for a small coursework cluster.
+  NodeDesiredSize:
+    Type: Number
+    Default: 1
+    MinValue: 1
+    MaxValue: 2
+  NodeMaxSize:
+    Type: Number
+    Default: 2
+    MinValue: 1
+    MaxValue: 3
+  ClusterEndpointPublicAccessCidrs:
+    Type: CommaDelimitedList
+    Default: 0.0.0.0/0
+    Description: Restrict this when using self-hosted CI. GitHub-hosted runners require public EKS API access.
+
+Resources:
+  EksClusterRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectName}-${EnvironmentName}-eks-cluster'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: eks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonEKSClusterPolicy
+
+  EksNodeRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectName}-${EnvironmentName}-eks-node'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy
+        - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryPullOnly
+        - arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy
+
+  EksControlPlaneSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Additional security group for the Wonderland EKS control plane.
+      VpcId: !Ref ExistingVpcId
+      SecurityGroupEgress:
+        - IpProtocol: '-1'
+          CidrIp: 0.0.0.0/0
+
+  EksNodeSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for Wonderland EKS managed EC2 worker nodes.
+      VpcId: !Ref ExistingVpcId
+      SecurityGroupEgress:
+        - IpProtocol: '-1'
+          CidrIp: 0.0.0.0/0
+
+  EksNodeIngressFromControlPlane:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref EksNodeSecurityGroup
+      IpProtocol: tcp
+      FromPort: 1025
+      ToPort: 65535
+      SourceSecurityGroupId: !Ref EksControlPlaneSecurityGroup
+
+  EksNodeIngressFromNodes:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref EksNodeSecurityGroup
+      IpProtocol: '-1'
+      SourceSecurityGroupId: !Ref EksNodeSecurityGroup
+
+  EksControlPlaneIngressFromNodes:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref EksControlPlaneSecurityGroup
+      IpProtocol: tcp
+      FromPort: 443
+      ToPort: 443
+      SourceSecurityGroupId: !Ref EksNodeSecurityGroup
+
+  RdsIngressFromEksNodes:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref ExistingDatabaseSecurityGroupId
+      IpProtocol: tcp
+      FromPort: 3306
+      ToPort: 3306
+      SourceSecurityGroupId: !Ref EksNodeSecurityGroup
+
+  EksNodeLaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateName: !Sub '${ProjectName}-${EnvironmentName}-eks-node'
+      LaunchTemplateData:
+        MetadataOptions:
+          HttpTokens: required
+        NetworkInterfaces:
+          - DeviceIndex: 0
+            AssociatePublicIpAddress: true
+            Groups:
+              - !Ref EksNodeSecurityGroup
+
+  EksCluster:
+    Type: AWS::EKS::Cluster
+    Properties:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-eks'
+      Version: !Ref KubernetesVersion
+      RoleArn: !GetAtt EksClusterRole.Arn
+      ResourcesVpcConfig:
+        EndpointPrivateAccess: true
+        EndpointPublicAccess: true
+        PublicAccessCidrs: !Ref ClusterEndpointPublicAccessCidrs
+        SecurityGroupIds:
+          - !Ref EksControlPlaneSecurityGroup
+        SubnetIds:
+          - !Ref ExistingPublicSubnetOneId
+          - !Ref ExistingPublicSubnetTwoId
+          - !Ref ExistingPrivateSubnetOneId
+          - !Ref ExistingPrivateSubnetTwoId
+      Logging:
+        ClusterLogging:
+          EnabledTypes:
+            - Type: api
+            - Type: audit
+            - Type: authenticator
+
+  EksNodeGroup:
+    Type: AWS::EKS::Nodegroup
+    Properties:
+      ClusterName: !Ref EksCluster
+      NodegroupName: primary
+      NodeRole: !GetAtt EksNodeRole.Arn
+      AmiType: AL2023_x86_64_STANDARD
+      CapacityType: ON_DEMAND
+      InstanceTypes:
+        - !Ref NodeInstanceType
+      ScalingConfig:
+        DesiredSize: !Ref NodeDesiredSize
+        MinSize: 1
+        MaxSize: !Ref NodeMaxSize
+      Subnets:
+        - !Ref ExistingPublicSubnetOneId
+        - !Ref ExistingPublicSubnetTwoId
+      LaunchTemplate:
+        Id: !Ref EksNodeLaunchTemplate
+        Version: !GetAtt EksNodeLaunchTemplate.LatestVersionNumber
+      UpdateConfig:
+        MaxUnavailable: 1
+
+  EksPodIdentityAgent:
+    Type: AWS::EKS::Addon
+    DependsOn: EksNodeGroup
+    Properties:
+      ClusterName: !Ref EksCluster
+      AddonName: eks-pod-identity-agent
+      ResolveConflicts: OVERWRITE
+
+  AwsLoadBalancerControllerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectName}-${EnvironmentName}-aws-load-balancer-controller'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: pods.eks.amazonaws.com
+            Action:
+              - sts:AssumeRole
+              - sts:TagSession
+      Policies:
+        - PolicyName: aws-load-balancer-controller
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - acm:DescribeCertificate
+                  - acm:ListCertificates
+                  - ec2:DescribeAccountAttributes
+                  - ec2:DescribeAddresses
+                  - ec2:DescribeAvailabilityZones
+                  - ec2:DescribeCoipPools
+                  - ec2:DescribeInternetGateways
+                  - ec2:DescribeInstances
+                  - ec2:DescribeNetworkInterfaces
+                  - ec2:DescribeSecurityGroups
+                  - ec2:DescribeSecurityGroupRules
+                  - ec2:DescribeSubnets
+                  - ec2:DescribeTags
+                  - ec2:DescribeVpcPeeringConnections
+                  - ec2:DescribeVpcs
+                  - ec2:GetCoipPoolUsage
+                  - elasticloadbalancing:DescribeListenerAttributes
+                  - elasticloadbalancing:DescribeListenerCertificates
+                  - elasticloadbalancing:DescribeListeners
+                  - elasticloadbalancing:DescribeLoadBalancerAttributes
+                  - elasticloadbalancing:DescribeLoadBalancers
+                  - elasticloadbalancing:DescribeRules
+                  - elasticloadbalancing:DescribeSSLPolicies
+                  - elasticloadbalancing:DescribeTags
+                  - elasticloadbalancing:DescribeTargetGroupAttributes
+                  - elasticloadbalancing:DescribeTargetGroups
+                  - elasticloadbalancing:DescribeTargetHealth
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - ec2:AuthorizeSecurityGroupIngress
+                  - ec2:CreateSecurityGroup
+                  - ec2:CreateTags
+                  - ec2:DeleteSecurityGroup
+                  - ec2:DeleteTags
+                  - ec2:RevokeSecurityGroupIngress
+                  - elasticloadbalancing:AddListenerCertificates
+                  - elasticloadbalancing:AddTags
+                  - elasticloadbalancing:CreateListener
+                  - elasticloadbalancing:CreateLoadBalancer
+                  - elasticloadbalancing:CreateRule
+                  - elasticloadbalancing:CreateTargetGroup
+                  - elasticloadbalancing:DeleteListener
+                  - elasticloadbalancing:DeleteLoadBalancer
+                  - elasticloadbalancing:DeleteRule
+                  - elasticloadbalancing:DeleteTargetGroup
+                  - elasticloadbalancing:DeregisterTargets
+                  - elasticloadbalancing:ModifyListener
+                  - elasticloadbalancing:ModifyLoadBalancerAttributes
+                  - elasticloadbalancing:ModifyRule
+                  - elasticloadbalancing:ModifyTargetGroup
+                  - elasticloadbalancing:ModifyTargetGroupAttributes
+                  - elasticloadbalancing:RegisterTargets
+                  - elasticloadbalancing:RemoveListenerCertificates
+                  - elasticloadbalancing:RemoveTags
+                  - elasticloadbalancing:SetIpAddressType
+                  - elasticloadbalancing:SetSecurityGroups
+                  - elasticloadbalancing:SetSubnets
+                Resource: '*'
+              - Effect: Allow
+                Action: iam:CreateServiceLinkedRole
+                Resource: '*'
+                Condition:
+                  StringEquals:
+                    iam:AWSServiceName: elasticloadbalancing.amazonaws.com
+
+  AwsLoadBalancerControllerPodIdentity:
+    Type: AWS::EKS::PodIdentityAssociation
+    DependsOn: EksPodIdentityAgent
+    Properties:
+      ClusterName: !Ref EksCluster
+      Namespace: kube-system
+      ServiceAccount: aws-load-balancer-controller
+      RoleArn: !GetAtt AwsLoadBalancerControllerRole.Arn
+
+Outputs:
+  EksClusterName:
+    Description: EKS cluster name for aws eks update-kubeconfig.
+    Value: !Ref EksCluster
+  EksClusterArn:
+    Description: EKS cluster ARN.
+    Value: !GetAtt EksCluster.Arn
+  EksNodeGroupName:
+    Description: Managed EC2 worker node group name.
+    Value: !Ref EksNodeGroup
+  EksNodeSecurityGroupId:
+    Description: Security group allowed to connect to the existing private RDS instance.
+    Value: !Ref EksNodeSecurityGroup
+  AwsLoadBalancerControllerRoleArn:
+    Description: Pod Identity role used by the AWS Load Balancer Controller.
+    Value: !GetAtt AwsLoadBalancerControllerRole.Arn
