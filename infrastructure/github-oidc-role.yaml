@@ -12,6 +12,10 @@ Parameters:
     Type: String
     Default: main
     Description: Branch allowed to deploy to AWS.
+  GitHubEnvironment:
+    Type: String
+    Default: production
+    Description: GitHub Actions environment allowed to deploy to AWS.
   ProjectName:
     Type: String
     Default: wonderland
@@ -42,7 +46,9 @@ Resources:
               StringEquals:
                 token.actions.githubusercontent.com:aud: sts.amazonaws.com
               StringLike:
-                token.actions.githubusercontent.com:sub: !Sub 'repo:${GitHubOrganization}/${GitHubRepository}:ref:refs/heads/${GitHubBranch}'
+                token.actions.githubusercontent.com:sub:
+                  - !Sub 'repo:${GitHubOrganization}/${GitHubRepository}:ref:refs/heads/${GitHubBranch}'
+                  - !Sub 'repo:${GitHubOrganization}/${GitHubRepository}:environment:${GitHubEnvironment}'
       Policies:
         - PolicyName: !Sub '${ProjectName}-deployment-policy'
           PolicyDocument:

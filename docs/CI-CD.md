@@ -44,7 +44,8 @@ aws cloudformation deploy `
   --parameter-overrides `
     GitHubOrganization=YOUR_GITHUB_OWNER `
     GitHubRepository=YOUR_REPOSITORY_NAME `
-    GitHubBranch=main
+    GitHubBranch=main `
+    GitHubEnvironment=production
 ```
 
 3. In the CloudFormation stack outputs, copy `DeploymentRoleArn`.
