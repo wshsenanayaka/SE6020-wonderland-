@@ -28,6 +28,11 @@ Parameters:
   DatabaseInstanceClass:
     Type: String
     Default: db.t3.micro
+  DatabaseProtectionMode:
+    Type: String
+    Default: development
+    AllowedValues: [development, production]
+    Description: Development deletes failed test databases; production keeps snapshots and enables deletion protection.
   DesiredCount:
     Type: Number
     Default: 1
@@ -41,6 +46,8 @@ Parameters:
 
 Conditions:
   ShouldCreateApplicationServices: !Equals [!Ref CreateApplicationServices, 'true']
+  IsProductionDatabase: !Equals [!Ref DatabaseProtectionMode, production]
+  IsDevelopmentDatabase: !Equals [!Ref DatabaseProtectionMode, development]
 
 Resources:
   Vpc:
@@ -192,8 +199,9 @@ Resources:
         - !Ref PrivateSubnetOne
         - !Ref PrivateSubnetTwo
 
-  WonderlandDatabase:
+  WonderlandProductionDatabase:
     Type: AWS::RDS::DBInstance
+    Condition: IsProductionDatabase
     DeletionPolicy: Snapshot
     UpdateReplacePolicy: Snapshot
     Properties:
@@ -203,6 +211,29 @@ Resources:
       DBInstanceIdentifier: !Sub '${ProjectName}-${EnvironmentName}-mysql'
       DBName: !Ref DatabaseName
       DBSubnetGroupName: !Ref DatabaseSubnetGroup
+      Engine: mysql
+      MasterUsername: !Ref DatabaseUsername
+      MasterUserPassword: !Ref DatabasePassword
+      MultiAZ: false
+      DeletionProtection: true
+      PubliclyAccessible: false
+      StorageEncrypted: true
+      VPCSecurityGroups:
+        - !Ref DatabaseSecurityGroup
+
+  WonderlandDevelopmentDatabase:
+    Type: AWS::RDS::DBInstance
+    Condition: IsDevelopmentDatabase
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      AllocatedStorage: 20
+      BackupRetentionPeriod: 0
+      DBInstanceClass: !Ref DatabaseInstanceClass
+      DBInstanceIdentifier: !Sub '${ProjectName}-${EnvironmentName}-mysql'
+      DBName: !Ref DatabaseName
+      DBSubnetGroupName: !Ref DatabaseSubnetGroup
+      DeletionProtection: false
       Engine: mysql
       MasterUsername: !Ref DatabaseUsername
       MasterUserPassword: !Ref DatabasePassword
@@ -520,7 +551,10 @@ Resources:
             - Name: PORT
               Value: '4001'
             - Name: DB_HOST
-              Value: !GetAtt WonderlandDatabase.Endpoint.Address
+              Value: !If
+                - IsProductionDatabase
+                - !GetAtt WonderlandProductionDatabase.Endpoint.Address
+                - !GetAtt WonderlandDevelopmentDatabase.Endpoint.Address
             - Name: DB_PORT
               Value: '3306'
             - Name: DB_USER
@@ -559,7 +593,10 @@ Resources:
             - Name: PORT
               Value: '4002'
             - Name: DB_HOST
-              Value: !GetAtt WonderlandDatabase.Endpoint.Address
+              Value: !If
+                - IsProductionDatabase
+                - !GetAtt WonderlandProductionDatabase.Endpoint.Address
+                - !GetAtt WonderlandDevelopmentDatabase.Endpoint.Address
             - Name: DB_PORT
               Value: '3306'
             - Name: DB_USER
@@ -598,7 +635,10 @@ Resources:
             - Name: PORT
               Value: '4003'
             - Name: DB_HOST
-              Value: !GetAtt WonderlandDatabase.Endpoint.Address
+              Value: !If
+                - IsProductionDatabase
+                - !GetAtt WonderlandProductionDatabase.Endpoint.Address
+                - !GetAtt WonderlandDevelopmentDatabase.Endpoint.Address
             - Name: DB_PORT
               Value: '3306'
             - Name: DB_USER
@@ -781,4 +821,7 @@ Outputs:
     Value: !Ref ApplicationSecrets
   DatabaseEndpoint:
     Description: Private RDS MySQL endpoint.
-    Value: !GetAtt WonderlandDatabase.Endpoint.Address
+    Value: !If
+      - IsProductionDatabase
+      - !GetAtt WonderlandProductionDatabase.Endpoint.Address
+      - !GetAtt WonderlandDevelopmentDatabase.Endpoint.Address

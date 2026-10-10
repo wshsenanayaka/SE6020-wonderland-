@@ -14,6 +14,7 @@ env:
   STACK_NAME: wonderland-production
   PROJECT_NAME: wonderland
   ENVIRONMENT_NAME: production
+  DATABASE_PROTECTION_MODE: development
 
 jobs:
   validate:
@@ -65,7 +66,23 @@ jobs:
       - name: Create or update infrastructure
         run: |
           if aws cloudformation describe-stacks --stack-name "$STACK_NAME" >/dev/null 2>&1; then
-            create_services=true
+            stack_status=$(aws cloudformation describe-stacks \
+              --stack-name "$STACK_NAME" \
+              --query 'Stacks[0].StackStatus' \
+              --output text)
+            case "$stack_status" in
+              CREATE_COMPLETE|UPDATE_COMPLETE|UPDATE_ROLLBACK_COMPLETE|IMPORT_COMPLETE)
+                create_services=true
+                ;;
+              ROLLBACK_COMPLETE|ROLLBACK_FAILED|CREATE_FAILED|DELETE_FAILED|UPDATE_ROLLBACK_FAILED)
+                echo "::error title=CloudFormation stack requires recovery::$STACK_NAME is $stack_status. Review the CloudFormation Events tab, resolve retained resources, then manually delete or recover the stack before deploying again."
+                exit 1
+                ;;
+              *)
+                echo "::error title=CloudFormation stack is busy or unavailable::$STACK_NAME is $stack_status. Wait for the current operation to finish before deploying."
+                exit 1
+                ;;
+            esac
           else
             create_services=false
           fi
@@ -76,6 +93,7 @@ jobs:
             --parameter-overrides \
               ProjectName="$PROJECT_NAME" \
               EnvironmentName="$ENVIRONMENT_NAME" \
+              DatabaseProtectionMode="$DATABASE_PROTECTION_MODE" \
               DatabasePassword="${{ secrets.DB_PASSWORD }}" \
               CreateApplicationServices="$create_services"
 
@@ -84,7 +102,7 @@ jobs:
         run: |
           aws cloudformation describe-stack-events \
             --stack-name "$STACK_NAME" \
-            --query "StackEvents[?ResourceStatus=='CREATE_FAILED' || ResourceStatus=='UPDATE_FAILED'].[Timestamp,LogicalResourceId,ResourceStatus,ResourceStatusReason]" \
+            --query "StackEvents[?ResourceStatus=='CREATE_FAILED' || ResourceStatus=='UPDATE_FAILED' || ResourceStatus=='DELETE_FAILED' || ResourceStatus=='ROLLBACK_FAILED'].[Timestamp,LogicalResourceId,ResourceStatus,ResourceStatusReason]" \
             --output table \
             --no-cli-pager || true
 
@@ -123,6 +141,7 @@ jobs:
             --parameter-overrides \
               ProjectName="$PROJECT_NAME" \
               EnvironmentName="$ENVIRONMENT_NAME" \
+              DatabaseProtectionMode="$DATABASE_PROTECTION_MODE" \
               DatabasePassword="${{ secrets.DB_PASSWORD }}" \
               CreateApplicationServices=true
 

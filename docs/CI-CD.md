@@ -58,6 +58,12 @@ aws cloudformation deploy `
 
 The workflow uses short-lived GitHub OIDC credentials. Do not add AWS access keys to GitHub secrets.
 
+## Database Protection Modes
+
+The CD workflow currently passes `DATABASE_PROTECTION_MODE=development`. This is intended for the disposable assignment environment: an RDS database is deleted without a final snapshot if stack creation rolls back.
+
+Before a real production deployment, change this value in `.github/workflows/cd.yml` to `production`. Production mode enables RDS deletion protection and uses CloudFormation snapshots for delete and replacement operations.
+
 ## Payment and Email Secrets
 
 The main stack creates an AWS Secrets Manager secret with the output name `ApplicationSecretsArn`. After the first deployment, update its JSON value in AWS Secrets Manager while preserving `DB_PASSWORD`:
