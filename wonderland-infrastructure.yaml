@@ -1,0 +1,784 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Wonderland production infrastructure: ECS Fargate microservices, RDS MySQL, ECR, S3 and CloudFront.'
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: wonderland
+    AllowedPattern: '^[a-z][a-z0-9-]{2,30}$'
+  EnvironmentName:
+    Type: String
+    Default: production
+    AllowedPattern: '^[a-z][a-z0-9-]{2,30}$'
+  DatabaseName:
+    Type: String
+    Default: wonderlanddb
+    AllowedPattern: '^[a-zA-Z][a-zA-Z0-9]{0,63}$'
+  DatabaseUsername:
+    Type: String
+    Default: wonderland_admin
+    AllowedPattern: '^[a-zA-Z][a-zA-Z0-9_]{0,15}$'
+  DatabasePassword:
+    Type: String
+    NoEcho: true
+    MinLength: 8
+    MaxLength: 64
+    AllowedPattern: '^[a-zA-Z0-9!#$%^&*()_+.-]+$'
+    ConstraintDescription: Use 8-64 letters, digits, or ! # $ % ^ & * ( ) _ + . - only.
+  DatabaseInstanceClass:
+    Type: String
+    Default: db.t3.micro
+  DesiredCount:
+    Type: Number
+    Default: 1
+    MinValue: 1
+    MaxValue: 4
+  CreateApplicationServices:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['true', 'false']
+    Description: Set to true after CI/CD has pushed the first images to ECR.
+
+Conditions:
+  ShouldCreateApplicationServices: !Equals [!Ref CreateApplicationServices, 'true']
+
+Resources:
+  Vpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.42.0.0/16
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-vpc'
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-igw'
+
+  InternetGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref InternetGateway
+      VpcId: !Ref Vpc
+
+  PublicSubnetOne:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Select [0, !GetAZs '']
+      CidrBlock: 10.42.0.0/20
+      MapPublicIpOnLaunch: true
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-public-a'
+
+  PublicSubnetTwo:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Select [1, !GetAZs '']
+      CidrBlock: 10.42.16.0/20
+      MapPublicIpOnLaunch: true
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-public-b'
+
+  PrivateSubnetOne:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Select [0, !GetAZs '']
+      CidrBlock: 10.42.32.0/20
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-private-a'
+
+  PrivateSubnetTwo:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Select [1, !GetAZs '']
+      CidrBlock: 10.42.48.0/20
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-private-b'
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-public-routes'
+
+  PublicInternetRoute:
+    Type: AWS::EC2::Route
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnetOneRouteAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnetOne
+
+  PublicSubnetTwoRouteAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnetTwo
+
+  LoadBalancerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Public HTTP access to the Wonderland application load balancer.
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+      SecurityGroupEgress:
+        - IpProtocol: '-1'
+          CidrIp: 0.0.0.0/0
+
+  ApplicationSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: ECS services, reachable only from the load balancer and peer services.
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 8089
+          ToPort: 8089
+          SourceSecurityGroupId: !Ref LoadBalancerSecurityGroup
+      SecurityGroupEgress:
+        - IpProtocol: '-1'
+          CidrIp: 0.0.0.0/0
+
+  InternalServiceIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref ApplicationSecurityGroup
+      IpProtocol: tcp
+      FromPort: 4001
+      ToPort: 4003
+      SourceSecurityGroupId: !Ref ApplicationSecurityGroup
+
+  DatabaseSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: MySQL access only from Wonderland ECS tasks.
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 3306
+          ToPort: 3306
+          SourceSecurityGroupId: !Ref ApplicationSecurityGroup
+
+  DatabaseSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Private subnets for Wonderland MySQL.
+      SubnetIds:
+        - !Ref PrivateSubnetOne
+        - !Ref PrivateSubnetTwo
+
+  WonderlandDatabase:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Snapshot
+    UpdateReplacePolicy: Snapshot
+    Properties:
+      AllocatedStorage: 20
+      BackupRetentionPeriod: 7
+      DBInstanceClass: !Ref DatabaseInstanceClass
+      DBInstanceIdentifier: !Sub '${ProjectName}-${EnvironmentName}-mysql'
+      DBName: !Ref DatabaseName
+      DBSubnetGroupName: !Ref DatabaseSubnetGroup
+      Engine: mysql
+      MasterUsername: !Ref DatabaseUsername
+      MasterUserPassword: !Ref DatabasePassword
+      MultiAZ: false
+      PubliclyAccessible: false
+      StorageEncrypted: true
+      VPCSecurityGroups:
+        - !Ref DatabaseSecurityGroup
+
+  ApplicationSecrets:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub '${ProjectName}/${EnvironmentName}/application'
+      Description: Wonderland database and integration secrets used by ECS tasks.
+      SecretString: !Sub
+        - '{"DB_PASSWORD":"${ProvidedDatabasePassword}","STRIPE_SECRET_KEY":"","SMTP_HOST":"","SMTP_PORT":"587","SMTP_SECURE":"false","SMTP_USER":"","SMTP_PASSWORD":"","SMTP_FROM":"Wonderland Theme Park <no-reply@wonderland.local>"}'
+        - ProvidedDatabasePassword: !Ref DatabasePassword
+
+  ApiGatewayRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Sub '${ProjectName}-${EnvironmentName}-api-gateway'
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      ImageTagMutability: MUTABLE
+
+  AuthServiceRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Sub '${ProjectName}-${EnvironmentName}-auth-service'
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      ImageTagMutability: MUTABLE
+
+  UserServiceRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Sub '${ProjectName}-${EnvironmentName}-user-service'
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      ImageTagMutability: MUTABLE
+
+  BusinessServiceRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Sub '${ProjectName}-${EnvironmentName}-business-service'
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      ImageTagMutability: MUTABLE
+
+  EcsCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Sub '${ProjectName}-${EnvironmentName}'
+      ClusterSettings:
+        - Name: containerInsights
+          Value: enabled
+
+  PrivateDnsNamespace:
+    Type: AWS::ServiceDiscovery::PrivateDnsNamespace
+    Properties:
+      Name: !Sub '${ProjectName}.local'
+      Vpc: !Ref Vpc
+
+  AuthDiscoveryService:
+    Type: AWS::ServiceDiscovery::Service
+    Properties:
+      Name: auth
+      DnsConfig:
+        DnsRecords:
+          - Type: A
+            TTL: 10
+        NamespaceId: !Ref PrivateDnsNamespace
+        RoutingPolicy: MULTIVALUE
+
+  UserDiscoveryService:
+    Type: AWS::ServiceDiscovery::Service
+    Properties:
+      Name: user
+      DnsConfig:
+        DnsRecords:
+          - Type: A
+            TTL: 10
+        NamespaceId: !Ref PrivateDnsNamespace
+        RoutingPolicy: MULTIVALUE
+
+  BusinessDiscoveryService:
+    Type: AWS::ServiceDiscovery::Service
+    Properties:
+      Name: business
+      DnsConfig:
+        DnsRecords:
+          - Type: A
+            TTL: 10
+        NamespaceId: !Ref PrivateDnsNamespace
+        RoutingPolicy: MULTIVALUE
+
+  TaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectName}-${EnvironmentName}-task-execution'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      Policies:
+        - PolicyName: read-application-secrets
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource: !Ref ApplicationSecrets
+
+  TaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectName}-${EnvironmentName}-task'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+
+  GatewayLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/ecs/${ProjectName}-${EnvironmentName}/api-gateway'
+      RetentionInDays: 14
+
+  AuthLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/ecs/${ProjectName}-${EnvironmentName}/auth-service'
+      RetentionInDays: 14
+
+  UserLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/ecs/${ProjectName}-${EnvironmentName}/user-service'
+      RetentionInDays: 14
+
+  BusinessLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/ecs/${ProjectName}-${EnvironmentName}/business-service'
+      RetentionInDays: 14
+
+  PublicLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-alb'
+      Scheme: internet-facing
+      SecurityGroups:
+        - !Ref LoadBalancerSecurityGroup
+      Subnets:
+        - !Ref PublicSubnetOne
+        - !Ref PublicSubnetTwo
+      Type: application
+
+  GatewayTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckPath: /health
+      HealthCheckProtocol: HTTP
+      Matcher:
+        HttpCode: '200'
+      Port: 8089
+      Protocol: HTTP
+      TargetType: ip
+      VpcId: !Ref Vpc
+
+  HttpListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref GatewayTargetGroup
+      LoadBalancerArn: !Ref PublicLoadBalancer
+      Port: 80
+      Protocol: HTTP
+
+  FrontendBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  CloudFrontOriginAccessControl:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Description: Access control for the private Wonderland frontend bucket.
+        Name: !Sub '${ProjectName}-${EnvironmentName}-frontend-oac'
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  CloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        DefaultRootObject: index.html
+        HttpVersion: http2
+        PriceClass: PriceClass_100
+        Origins:
+          - Id: frontend-s3
+            DomainName: !GetAtt FrontendBucket.RegionalDomainName
+            OriginAccessControlId: !Ref CloudFrontOriginAccessControl
+            S3OriginConfig: {}
+          - Id: api-load-balancer
+            DomainName: !GetAtt PublicLoadBalancer.DNSName
+            CustomOriginConfig:
+              HTTPPort: 80
+              HTTPSPort: 443
+              OriginProtocolPolicy: http-only
+              OriginSSLProtocols:
+                - TLSv1.2
+        DefaultCacheBehavior:
+          TargetOriginId: frontend-s3
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: [GET, HEAD, OPTIONS]
+          CachedMethods: [GET, HEAD]
+          ForwardedValues:
+            QueryString: false
+            Cookies:
+              Forward: none
+        CacheBehaviors:
+          - PathPattern: /api/*
+            TargetOriginId: api-load-balancer
+            ViewerProtocolPolicy: redirect-to-https
+            AllowedMethods: [GET, HEAD, OPTIONS, PUT, POST, PATCH, DELETE]
+            CachedMethods: [GET, HEAD]
+            MinTTL: 0
+            DefaultTTL: 0
+            MaxTTL: 0
+            ForwardedValues:
+              QueryString: true
+              Headers:
+                - Origin
+                - Access-Control-Request-Headers
+                - Access-Control-Request-Method
+              Cookies:
+                Forward: all
+          - PathPattern: /api-docs*
+            TargetOriginId: api-load-balancer
+            ViewerProtocolPolicy: redirect-to-https
+            AllowedMethods: [GET, HEAD, OPTIONS]
+            CachedMethods: [GET, HEAD]
+            MinTTL: 0
+            DefaultTTL: 0
+            MaxTTL: 0
+            ForwardedValues:
+              QueryString: true
+              Cookies:
+                Forward: all
+        CustomErrorResponses:
+          - ErrorCode: 403
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+          - ErrorCode: 404
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+
+  FrontendBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref FrontendBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: s3:GetObject
+            Resource: !Sub '${FrontendBucket.Arn}/*'
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub 'arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/${CloudFrontDistribution}'
+
+  AuthTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub '${ProjectName}-${EnvironmentName}-auth-service'
+      Cpu: '256'
+      Memory: '512'
+      NetworkMode: awsvpc
+      RequiresCompatibilities: [FARGATE]
+      ExecutionRoleArn: !GetAtt TaskExecutionRole.Arn
+      TaskRoleArn: !GetAtt TaskRole.Arn
+      ContainerDefinitions:
+        - Name: auth-service
+          Image: !Sub '${AuthServiceRepository.RepositoryUri}:latest'
+          Essential: true
+          PortMappings:
+            - ContainerPort: 4001
+          Environment:
+            - Name: PORT
+              Value: '4001'
+            - Name: DB_HOST
+              Value: !GetAtt WonderlandDatabase.Endpoint.Address
+            - Name: DB_PORT
+              Value: '3306'
+            - Name: DB_USER
+              Value: !Ref DatabaseUsername
+            - Name: DB_NAME
+              Value: !Ref DatabaseName
+            - Name: FRONTEND_ORIGIN
+              Value: !Sub 'https://${CloudFrontDistribution.DomainName}'
+          Secrets:
+            - Name: DB_PASSWORD
+              ValueFrom: !Sub '${ApplicationSecrets}:DB_PASSWORD::'
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref AuthLogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: ecs
+
+  UserTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub '${ProjectName}-${EnvironmentName}-user-service'
+      Cpu: '256'
+      Memory: '512'
+      NetworkMode: awsvpc
+      RequiresCompatibilities: [FARGATE]
+      ExecutionRoleArn: !GetAtt TaskExecutionRole.Arn
+      TaskRoleArn: !GetAtt TaskRole.Arn
+      ContainerDefinitions:
+        - Name: user-service
+          Image: !Sub '${UserServiceRepository.RepositoryUri}:latest'
+          Essential: true
+          PortMappings:
+            - ContainerPort: 4002
+          Environment:
+            - Name: PORT
+              Value: '4002'
+            - Name: DB_HOST
+              Value: !GetAtt WonderlandDatabase.Endpoint.Address
+            - Name: DB_PORT
+              Value: '3306'
+            - Name: DB_USER
+              Value: !Ref DatabaseUsername
+            - Name: DB_NAME
+              Value: !Ref DatabaseName
+            - Name: FRONTEND_ORIGIN
+              Value: !Sub 'https://${CloudFrontDistribution.DomainName}'
+          Secrets:
+            - Name: DB_PASSWORD
+              ValueFrom: !Sub '${ApplicationSecrets}:DB_PASSWORD::'
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref UserLogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: ecs
+
+  BusinessTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub '${ProjectName}-${EnvironmentName}-business-service'
+      Cpu: '512'
+      Memory: '1024'
+      NetworkMode: awsvpc
+      RequiresCompatibilities: [FARGATE]
+      ExecutionRoleArn: !GetAtt TaskExecutionRole.Arn
+      TaskRoleArn: !GetAtt TaskRole.Arn
+      ContainerDefinitions:
+        - Name: business-service
+          Image: !Sub '${BusinessServiceRepository.RepositoryUri}:latest'
+          Essential: true
+          PortMappings:
+            - ContainerPort: 4003
+          Environment:
+            - Name: PORT
+              Value: '4003'
+            - Name: DB_HOST
+              Value: !GetAtt WonderlandDatabase.Endpoint.Address
+            - Name: DB_PORT
+              Value: '3306'
+            - Name: DB_USER
+              Value: !Ref DatabaseUsername
+            - Name: DB_NAME
+              Value: !Ref DatabaseName
+            - Name: FRONTEND_ORIGIN
+              Value: !Sub 'https://${CloudFrontDistribution.DomainName}'
+            - Name: STRIPE_SUCCESS_URL
+              Value: !Sub 'https://${CloudFrontDistribution.DomainName}/payment-success?session_id={CHECKOUT_SESSION_ID}'
+            - Name: STRIPE_CANCEL_URL
+              Value: !Sub 'https://${CloudFrontDistribution.DomainName}/payment-cancel'
+          Secrets:
+            - Name: DB_PASSWORD
+              ValueFrom: !Sub '${ApplicationSecrets}:DB_PASSWORD::'
+            - Name: STRIPE_SECRET_KEY
+              ValueFrom: !Sub '${ApplicationSecrets}:STRIPE_SECRET_KEY::'
+            - Name: SMTP_HOST
+              ValueFrom: !Sub '${ApplicationSecrets}:SMTP_HOST::'
+            - Name: SMTP_PORT
+              ValueFrom: !Sub '${ApplicationSecrets}:SMTP_PORT::'
+            - Name: SMTP_SECURE
+              ValueFrom: !Sub '${ApplicationSecrets}:SMTP_SECURE::'
+            - Name: SMTP_USER
+              ValueFrom: !Sub '${ApplicationSecrets}:SMTP_USER::'
+            - Name: SMTP_PASSWORD
+              ValueFrom: !Sub '${ApplicationSecrets}:SMTP_PASSWORD::'
+            - Name: SMTP_FROM
+              ValueFrom: !Sub '${ApplicationSecrets}:SMTP_FROM::'
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref BusinessLogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: ecs
+
+  GatewayTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub '${ProjectName}-${EnvironmentName}-api-gateway'
+      Cpu: '256'
+      Memory: '512'
+      NetworkMode: awsvpc
+      RequiresCompatibilities: [FARGATE]
+      ExecutionRoleArn: !GetAtt TaskExecutionRole.Arn
+      TaskRoleArn: !GetAtt TaskRole.Arn
+      ContainerDefinitions:
+        - Name: api-gateway
+          Image: !Sub '${ApiGatewayRepository.RepositoryUri}:latest'
+          Essential: true
+          PortMappings:
+            - ContainerPort: 8089
+          Environment:
+            - Name: PORT
+              Value: '8089'
+            - Name: AUTH_SERVICE_URL
+              Value: !Sub 'http://auth.${ProjectName}.local:4001'
+            - Name: USER_SERVICE_URL
+              Value: !Sub 'http://user.${ProjectName}.local:4002'
+            - Name: BUSINESS_SERVICE_URL
+              Value: !Sub 'http://business.${ProjectName}.local:4003'
+            - Name: FRONTEND_ORIGIN
+              Value: !Sub 'https://${CloudFrontDistribution.DomainName}'
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref GatewayLogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: ecs
+
+  AuthEcsService:
+    Type: AWS::ECS::Service
+    Condition: ShouldCreateApplicationServices
+    Properties:
+      Cluster: !Ref EcsCluster
+      ServiceName: !Sub '${ProjectName}-${EnvironmentName}-auth-service'
+      DesiredCount: !Ref DesiredCount
+      LaunchType: FARGATE
+      TaskDefinition: !Ref AuthTaskDefinition
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          SecurityGroups:
+            - !Ref ApplicationSecurityGroup
+          Subnets:
+            - !Ref PublicSubnetOne
+            - !Ref PublicSubnetTwo
+      ServiceRegistries:
+        - RegistryArn: !GetAtt AuthDiscoveryService.Arn
+          ContainerName: auth-service
+          ContainerPort: 4001
+
+  UserEcsService:
+    Type: AWS::ECS::Service
+    Condition: ShouldCreateApplicationServices
+    Properties:
+      Cluster: !Ref EcsCluster
+      ServiceName: !Sub '${ProjectName}-${EnvironmentName}-user-service'
+      DesiredCount: !Ref DesiredCount
+      LaunchType: FARGATE
+      TaskDefinition: !Ref UserTaskDefinition
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          SecurityGroups:
+            - !Ref ApplicationSecurityGroup
+          Subnets:
+            - !Ref PublicSubnetOne
+            - !Ref PublicSubnetTwo
+      ServiceRegistries:
+        - RegistryArn: !GetAtt UserDiscoveryService.Arn
+          ContainerName: user-service
+          ContainerPort: 4002
+
+  BusinessEcsService:
+    Type: AWS::ECS::Service
+    Condition: ShouldCreateApplicationServices
+    Properties:
+      Cluster: !Ref EcsCluster
+      ServiceName: !Sub '${ProjectName}-${EnvironmentName}-business-service'
+      DesiredCount: !Ref DesiredCount
+      LaunchType: FARGATE
+      TaskDefinition: !Ref BusinessTaskDefinition
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          SecurityGroups:
+            - !Ref ApplicationSecurityGroup
+          Subnets:
+            - !Ref PublicSubnetOne
+            - !Ref PublicSubnetTwo
+      ServiceRegistries:
+        - RegistryArn: !GetAtt BusinessDiscoveryService.Arn
+          ContainerName: business-service
+          ContainerPort: 4003
+
+  GatewayEcsService:
+    Type: AWS::ECS::Service
+    Condition: ShouldCreateApplicationServices
+    DependsOn:
+      - HttpListener
+    Properties:
+      Cluster: !Ref EcsCluster
+      ServiceName: !Sub '${ProjectName}-${EnvironmentName}-api-gateway'
+      DesiredCount: !Ref DesiredCount
+      HealthCheckGracePeriodSeconds: 45
+      LaunchType: FARGATE
+      TaskDefinition: !Ref GatewayTaskDefinition
+      LoadBalancers:
+        - ContainerName: api-gateway
+          ContainerPort: 8089
+          TargetGroupArn: !Ref GatewayTargetGroup
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          SecurityGroups:
+            - !Ref ApplicationSecurityGroup
+          Subnets:
+            - !Ref PublicSubnetOne
+            - !Ref PublicSubnetTwo
+
+Outputs:
+  FrontendUrl:
+    Description: Public URL for the Wonderland website.
+    Value: !Sub 'https://${CloudFrontDistribution.DomainName}'
+  ApiUrl:
+    Description: Public API endpoint through CloudFront.
+    Value: !Sub 'https://${CloudFrontDistribution.DomainName}/api'
+  FrontendBucketName:
+    Description: S3 bucket receiving the React production build.
+    Value: !Ref FrontendBucket
+  CloudFrontDistributionId:
+    Description: CloudFront distribution identifier for cache invalidation.
+    Value: !Ref CloudFrontDistribution
+  EcsClusterName:
+    Description: ECS cluster used by the deployment workflow.
+    Value: !Ref EcsCluster
+  ApplicationSecretsArn:
+    Description: Store Stripe and SMTP values in this Secrets Manager secret JSON.
+    Value: !Ref ApplicationSecrets
+  DatabaseEndpoint:
+    Description: Private RDS MySQL endpoint.
+    Value: !GetAtt WonderlandDatabase.Endpoint.Address

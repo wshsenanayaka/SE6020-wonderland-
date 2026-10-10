@@ -1,0 +1,137 @@
+name: Continuous Deployment
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  AWS_REGION: ap-southeast-1
+  STACK_NAME: wonderland-production
+  PROJECT_NAME: wonderland
+  ENVIRONMENT_NAME: production
+
+jobs:
+  validate:
+    name: Verify release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install and build frontend
+        run: |
+          npm ci --prefix frontend
+          npm run build --prefix frontend
+
+      - name: Validate service source
+        run: |
+          for service in api-gateway auth-service user-service business-service; do
+            npm ci --prefix "backend/$service"
+            find "backend/$service/src" -name '*.js' -print0 | xargs -0 -n1 node --check
+          done
+
+  deploy:
+    name: Deploy AWS infrastructure and application
+    needs: validate
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials through GitHub OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Validate CloudFormation template
+        run: aws cloudformation validate-template --template-body file://wonderland-infrastructure.yaml
+
+      - name: Create or update infrastructure
+        run: |
+          if aws cloudformation describe-stacks --stack-name "$STACK_NAME" >/dev/null 2>&1; then
+            create_services=true
+          else
+            create_services=false
+          fi
+          aws cloudformation deploy \
+            --stack-name "$STACK_NAME" \
+            --template-file wonderland-infrastructure.yaml \
+            --capabilities CAPABILITY_NAMED_IAM \
+            --parameter-overrides \
+              ProjectName="$PROJECT_NAME" \
+              EnvironmentName="$ENVIRONMENT_NAME" \
+              DatabasePassword="${{ secrets.DB_PASSWORD }}" \
+              CreateApplicationServices="$create_services"
+
+      - name: Login to Amazon ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push service images
+        env:
+          ECR_REGISTRY: ${{ steps.ecr-login.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          for service in api-gateway auth-service user-service business-service; do
+            image="$ECR_REGISTRY/$PROJECT_NAME-$ENVIRONMENT_NAME-$service"
+            docker build --tag "$image:$IMAGE_TAG" --tag "$image:latest" "backend/$service"
+            docker push "$image:$IMAGE_TAG"
+            docker push "$image:latest"
+          done
+
+      - name: Publish React frontend to S3
+        run: |
+          npm ci --prefix frontend
+          npm run build --prefix frontend
+          frontend_bucket=$(aws cloudformation describe-stacks \
+            --stack-name "$STACK_NAME" \
+            --query "Stacks[0].Outputs[?OutputKey=='FrontendBucketName'].OutputValue" \
+            --output text)
+          aws s3 sync frontend/dist "s3://$frontend_bucket" --delete
+
+      - name: Start ECS services after the first image publish
+        run: |
+          aws cloudformation deploy \
+            --stack-name "$STACK_NAME" \
+            --template-file wonderland-infrastructure.yaml \
+            --capabilities CAPABILITY_NAMED_IAM \
+            --parameter-overrides \
+              ProjectName="$PROJECT_NAME" \
+              EnvironmentName="$ENVIRONMENT_NAME" \
+              DatabasePassword="${{ secrets.DB_PASSWORD }}" \
+              CreateApplicationServices=true
+
+      - name: Refresh CloudFront and ECS services
+        run: |
+          distribution_id=$(aws cloudformation describe-stacks \
+            --stack-name "$STACK_NAME" \
+            --query "Stacks[0].Outputs[?OutputKey=='CloudFrontDistributionId'].OutputValue" \
+            --output text)
+          cluster_name=$(aws cloudformation describe-stacks \
+            --stack-name "$STACK_NAME" \
+            --query "Stacks[0].Outputs[?OutputKey=='EcsClusterName'].OutputValue" \
+            --output text)
+          aws cloudfront create-invalidation --distribution-id "$distribution_id" --paths '/*'
+          for service in api-gateway auth-service user-service business-service; do
+            aws ecs update-service \
+              --cluster "$cluster_name" \
+              --service "$PROJECT_NAME-$ENVIRONMENT_NAME-$service" \
+              --force-new-deployment
+          done
+

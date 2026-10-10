@@ -351,6 +351,12 @@ cd backend
 docker compose up --build
 ```
 
+## CI/CD and AWS Deployment
+
+The project includes a GitHub Actions CI/CD pipeline and AWS CloudFormation automation for ECR, ECS Fargate, RDS MySQL, S3, CloudFront, CloudWatch, Secrets Manager, and networking.
+
+Read the setup and security instructions in [docs/CI-CD.md](docs/CI-CD.md).
+
 ## Default Login
 
 Administrator:

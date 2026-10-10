@@ -14,6 +14,10 @@ backend/**/.env
 frontend/.env
 frontend/.env.*
 
+# Private keys and deployment credentials
+*.pem
+*.key
+
 # Logs
 *.log
 npm-debug.log*
