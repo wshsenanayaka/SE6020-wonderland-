@@ -1,27 +1,35 @@
+
 AWSTemplateFormatVersion: '2010-09-09'
 Description: GitHub Actions OIDC role for Wonderland CI/CD deployments.
 
 Parameters:
   GitHubOrganization:
     Type: String
-    Description: GitHub user or organization that owns the repository.
+    Default: wshsenanayaka
+    Description: GitHub username or organization.
+
   GitHubRepository:
     Type: String
-    Description: Repository name only, without the owner.
+    Default: SE6020-wonderland-
+    Description: GitHub repository name.
+
   GitHubBranch:
     Type: String
     Default: main
-    Description: Branch allowed to deploy to AWS.
+    Description: Branch allowed to deploy.
+
   GitHubEnvironment:
     Type: String
     Default: production
-    Description: GitHub Actions environment allowed to deploy to AWS.
+    Description: GitHub Actions deployment environment.
+
   ProjectName:
     Type: String
     Default: wonderland
     AllowedPattern: '^[a-z][a-z0-9-]{2,30}$'
 
 Resources:
+
   GitHubActionsOidcProvider:
     Type: AWS::IAM::OIDCProvider
     Properties:
@@ -35,25 +43,30 @@ Resources:
     Type: AWS::IAM::Role
     Properties:
       RoleName: !Sub '${ProjectName}-github-actions-deployer'
+
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
           - Effect: Allow
             Principal:
               Federated: !Ref GitHubActionsOidcProvider
-            Action: sts:AssumeRoleWithWebIdentity
+
+            Action:
+              - sts:AssumeRoleWithWebIdentity
+
             Condition:
               StringEquals:
                 token.actions.githubusercontent.com:aud: sts.amazonaws.com
-              StringLike:
+
                 token.actions.githubusercontent.com:sub:
-                  - !Sub 'repo:${GitHubOrganization}/${GitHubRepository}:ref:refs/heads/${GitHubBranch}'
-                  - !Sub 'repo:${GitHubOrganization}/${GitHubRepository}:environment:${GitHubEnvironment}'
+                  !Sub 'repo:${GitHubOrganization}/${GitHubRepository}:environment:${GitHubEnvironment}'
+
       Policies:
         - PolicyName: !Sub '${ProjectName}-deployment-policy'
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
+
               - Sid: ManageWonderlandInfrastructure
                 Effect: Allow
                 Action:
@@ -69,6 +82,7 @@ Resources:
                   - s3:*
                   - cloudfront:*
                 Resource: '*'
+
               - Sid: ManageWonderlandTaskRoles
                 Effect: Allow
                 Action:
@@ -82,10 +96,13 @@ Resources:
                   - iam:DeleteRolePolicy
                   - iam:TagRole
                   - iam:UntagRole
-                Resource: !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${ProjectName}-*'
+                Resource:
+                  Fn::Sub: 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${ProjectName}-*'
+
               - Sid: CreateRequiredServiceLinkedRoles
                 Effect: Allow
-                Action: iam:CreateServiceLinkedRole
+                Action:
+                  - iam:CreateServiceLinkedRole
                 Resource: '*'
                 Condition:
                   StringEquals:
@@ -95,7 +112,7 @@ Resources:
                       - rds.amazonaws.com
 
 Outputs:
-  DeploymentRoleArn:
-    Description: Add this value as the AWS_DEPLOY_ROLE_ARN GitHub Actions secret.
-    Value: !GetAtt GitHubActionsDeploymentRole.Arn
 
+  DeploymentRoleArn:
+    Description: GitHub Actions AWS deployment role ARN.
+    Value: !GetAtt GitHubActionsDeploymentRole.Arn
