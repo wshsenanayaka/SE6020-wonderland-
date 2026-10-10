@@ -729,7 +729,6 @@ Resources:
       ServiceRegistries:
         - RegistryArn: !GetAtt AuthDiscoveryService.Arn
           ContainerName: auth-service
-          ContainerPort: 4001
 
   UserEcsService:
     Type: AWS::ECS::Service
@@ -751,7 +750,6 @@ Resources:
       ServiceRegistries:
         - RegistryArn: !GetAtt UserDiscoveryService.Arn
           ContainerName: user-service
-          ContainerPort: 4002
 
   BusinessEcsService:
     Type: AWS::ECS::Service
@@ -773,7 +771,6 @@ Resources:
       ServiceRegistries:
         - RegistryArn: !GetAtt BusinessDiscoveryService.Arn
           ContainerName: business-service
-          ContainerPort: 4003
 
   GatewayEcsService:
     Type: AWS::ECS::Service

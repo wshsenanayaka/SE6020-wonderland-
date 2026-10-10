@@ -145,6 +145,35 @@ jobs:
               DatabasePassword="${{ secrets.DB_PASSWORD }}" \
               CreateApplicationServices=true
 
+      - name: Diagnose ECS service deployment failure
+        if: failure()
+        run: |
+          echo 'CloudFormation failed resources:'
+          aws cloudformation describe-stack-events \
+            --stack-name "$STACK_NAME" \
+            --query "StackEvents[?ResourceStatus=='CREATE_FAILED' || ResourceStatus=='UPDATE_FAILED' || ResourceStatus=='DELETE_FAILED' || ResourceStatus=='ROLLBACK_FAILED' || ResourceStatus=='UPDATE_ROLLBACK_FAILED'].[Timestamp,LogicalResourceId,ResourceType,ResourceStatus,ResourceStatusReason]" \
+            --output table \
+            --no-cli-pager || true
+
+          cluster_name=$(aws cloudformation describe-stacks \
+            --stack-name "$STACK_NAME" \
+            --query "Stacks[0].Outputs[?OutputKey=='EcsClusterName'].OutputValue" \
+            --output text 2>/dev/null || true)
+          if [ -z "$cluster_name" ] || [ "$cluster_name" = "None" ]; then
+            echo 'ECS cluster output is unavailable; see the CloudFormation failures above.'
+            exit 0
+          fi
+
+          echo 'Recent ECS service events:'
+          for service in api-gateway auth-service user-service business-service; do
+            aws ecs describe-services \
+              --cluster "$cluster_name" \
+              --services "$PROJECT_NAME-$ENVIRONMENT_NAME-$service" \
+              --query 'services[0].events[0:10].[createdAt,message]' \
+              --output table \
+              --no-cli-pager || true
+          done
+
       - name: Refresh CloudFront and ECS services
         run: |
           distribution_id=$(aws cloudformation describe-stacks \
