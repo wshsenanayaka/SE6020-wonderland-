@@ -79,6 +79,15 @@ jobs:
               DatabasePassword="${{ secrets.DB_PASSWORD }}" \
               CreateApplicationServices="$create_services"
 
+      - name: Show CloudFormation failure details
+        if: failure()
+        run: |
+          aws cloudformation describe-stack-events \
+            --stack-name "$STACK_NAME" \
+            --query "StackEvents[?ResourceStatus=='CREATE_FAILED' || ResourceStatus=='UPDATE_FAILED'].[Timestamp,LogicalResourceId,ResourceStatus,ResourceStatusReason]" \
+            --output table \
+            --no-cli-pager || true
+
       - name: Login to Amazon ECR
         id: ecr-login
         uses: aws-actions/amazon-ecr-login@v2
