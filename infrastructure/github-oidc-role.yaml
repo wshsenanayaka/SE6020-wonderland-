@@ -3,21 +3,6 @@ AWSTemplateFormatVersion: '2010-09-09'
 Description: GitHub Actions OIDC role for Wonderland CI/CD deployments.
 
 Parameters:
-  GitHubOrganization:
-    Type: String
-    Default: wshsenanayaka
-    Description: GitHub username or organization.
-
-  GitHubRepository:
-    Type: String
-    Default: SE6020-wonderland-
-    Description: GitHub repository name.
-
-  GitHubBranch:
-    Type: String
-    Default: main
-    Description: Branch allowed to deploy.
-
   ProjectName:
     Type: String
     Default: wonderland
@@ -52,9 +37,7 @@ Resources:
             Condition:
               StringEquals:
                 token.actions.githubusercontent.com:aud: sts.amazonaws.com
-              StringLike:
-                token.actions.githubusercontent.com:sub:
-                  !Sub 'repo:${GitHubOrganization}/${GitHubRepository}:ref:refs/heads/${GitHubBranch}'
+                token.actions.githubusercontent.com:sub: 'repo:wshsenanayaka/SE6020-wonderland-:environment:production'
 
       Policies:
         - PolicyName: !Sub '${ProjectName}-deployment-policy'

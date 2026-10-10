@@ -42,9 +42,7 @@ aws cloudformation deploy `
   --template-file infrastructure/github-oidc-role.yaml `
   --capabilities CAPABILITY_NAMED_IAM `
   --parameter-overrides `
-    GitHubOrganization=YOUR_GITHUB_OWNER `
-    GitHubRepository=YOUR_REPOSITORY_NAME `
-    GitHubBranch=main
+    ProjectName=wonderland
 ```
 
 3. In the CloudFormation stack outputs, copy `DeploymentRoleArn`.
