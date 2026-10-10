@@ -92,11 +92,17 @@ jobs:
       - name: Validate CloudFormation templates
         run: cfn-lint wonderland-infrastructure.yaml infrastructure/eks-cluster.yaml infrastructure/github-oidc-role.yaml
 
-      - name: Set up kubectl
-        uses: azure/setup-kubectl@v4
-        with:
-          version: v1.35.0
-
-      - name: Validate Kubernetes manifests
-        run: kubectl apply --dry-run=client --validate=true -f kubernetes/
+      - name: Validate Kubernetes manifests offline
+        run: |
+          mapfile -d '' manifests < <(find kubernetes -type f \( -name '*.yaml' -o -name '*.yml' \) -print0)
+          test "${#manifests[@]}" -gt 0
+          docker run --rm \
+            -v "$PWD:/work:ro" \
+            -w /work \
+            ghcr.io/yannh/kubeconform:v0.8.0@sha256:faffaf43f95aa6425306e1ab8d6fcad72acb9049158f38e574c085ea1ec0f64e \
+            -strict \
+            -summary \
+            -verbose \
+            -kubernetes-version 1.35.0 \
+            "${manifests[@]}"
 
