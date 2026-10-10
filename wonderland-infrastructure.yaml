@@ -18,13 +18,6 @@ Parameters:
     Type: String
     Default: wonderlandadmin
     AllowedPattern: '^[a-zA-Z][a-zA-Z0-9]{0,15}$'
-  DatabasePassword:
-    Type: String
-    NoEcho: true
-    MinLength: 8
-    MaxLength: 64
-    AllowedPattern: '^[a-zA-Z0-9!#$%^&*()_+.-]+$'
-    ConstraintDescription: Use 8-64 letters, digits, or ! # $ % ^ & * ( ) _ + . - only.
   DatabaseInstanceClass:
     Type: String
     Default: db.t3.micro
@@ -43,6 +36,11 @@ Parameters:
     Default: 'false'
     AllowedValues: ['true', 'false']
     Description: Set to true after CI/CD has pushed the first images to ECR.
+  BootstrapApplicationSecret:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['true', 'false']
+    Description: Generate the initial database password inside Secrets Manager for a new stack only.
   ApiOriginDomain:
     Type: String
     Default: ''
@@ -50,6 +48,7 @@ Parameters:
 
 Conditions:
   ShouldCreateApplicationServices: !Equals [!Ref CreateApplicationServices, 'true']
+  ShouldBootstrapApplicationSecret: !Equals [!Ref BootstrapApplicationSecret, 'true']
   IsProductionDatabase: !Equals [!Ref DatabaseProtectionMode, production]
   IsDevelopmentDatabase: !Equals [!Ref DatabaseProtectionMode, development]
   HasApiOriginOverride: !Not [!Equals [!Ref ApiOriginDomain, '']]
@@ -223,6 +222,7 @@ Resources:
   WonderlandProductionDatabase:
     Type: AWS::RDS::DBInstance
     Condition: IsProductionDatabase
+    DependsOn: ApplicationSecrets
     DeletionPolicy: Snapshot
     UpdateReplacePolicy: Snapshot
     Properties:
@@ -234,7 +234,7 @@ Resources:
       DBSubnetGroupName: !Ref DatabaseSubnetGroup
       Engine: mysql
       MasterUsername: !Ref DatabaseUsername
-      MasterUserPassword: !Ref DatabasePassword
+      MasterUserPassword: !Sub '{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/application:SecretString:DB_PASSWORD}}'
       MultiAZ: false
       DeletionProtection: true
       PubliclyAccessible: false
@@ -245,6 +245,7 @@ Resources:
   WonderlandDevelopmentDatabase:
     Type: AWS::RDS::DBInstance
     Condition: IsDevelopmentDatabase
+    DependsOn: ApplicationSecrets
     DeletionPolicy: Delete
     UpdateReplacePolicy: Delete
     Properties:
@@ -257,7 +258,7 @@ Resources:
       DeletionProtection: false
       Engine: mysql
       MasterUsername: !Ref DatabaseUsername
-      MasterUserPassword: !Ref DatabasePassword
+      MasterUserPassword: !Sub '{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/application:SecretString:DB_PASSWORD}}'
       MultiAZ: false
       PubliclyAccessible: false
       StorageEncrypted: true
@@ -266,12 +267,19 @@ Resources:
 
   ApplicationSecrets:
     Type: AWS::SecretsManager::Secret
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       Name: !Sub '${ProjectName}/${EnvironmentName}/application'
       Description: Wonderland database and integration secrets used by ECS tasks.
-      SecretString: !Sub
-        - '{"DB_PASSWORD":"${ProvidedDatabasePassword}","STRIPE_SECRET_KEY":"","SMTP_HOST":"","SMTP_PORT":"587","SMTP_SECURE":"false","SMTP_USER":"","SMTP_PASSWORD":"","SMTP_FROM":"Wonderland Theme Park <no-reply@wonderland.local>"}'
-        - ProvidedDatabasePassword: !Ref DatabasePassword
+      # New stacks generate DB_PASSWORD here; existing secret values remain unchanged.
+      GenerateSecretString: !If
+        - ShouldBootstrapApplicationSecret
+        - SecretStringTemplate: '{"STRIPE_SECRET_KEY":"","SMTP_HOST":"","SMTP_PORT":"587","SMTP_SECURE":"false","SMTP_USER":"","SMTP_PASSWORD":"","SMTP_FROM":"Wonderland Theme Park <no-reply@wonderland.local>"}'
+          GenerateStringKey: DB_PASSWORD
+          PasswordLength: 32
+          ExcludeCharacters: '"@/\'
+        - !Ref AWS::NoValue
 
   ApiGatewayRepository:
     Type: AWS::ECR::Repository

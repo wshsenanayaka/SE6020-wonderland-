@@ -73,6 +73,7 @@ jobs:
       - name: Create or update infrastructure
         run: |
           if aws cloudformation describe-stacks --stack-name "$STACK_NAME" >/dev/null 2>&1; then
+            bootstrap_application_secret=false
             stack_status=$(aws cloudformation describe-stacks \
               --stack-name "$STACK_NAME" \
               --query 'Stacks[0].StackStatus' \
@@ -92,6 +93,7 @@ jobs:
             esac
           else
             create_services=false
+            bootstrap_application_secret=true
           fi
           aws cloudformation deploy \
             --stack-name "$STACK_NAME" \
@@ -101,7 +103,7 @@ jobs:
               ProjectName="$PROJECT_NAME" \
               EnvironmentName="$ENVIRONMENT_NAME" \
               DatabaseProtectionMode="$DATABASE_PROTECTION_MODE" \
-              DatabasePassword="${{ secrets.DB_PASSWORD }}" \
+              BootstrapApplicationSecret="$bootstrap_application_secret" \
               CreateApplicationServices="$create_services"
 
       - name: Show CloudFormation failure details
@@ -149,7 +151,7 @@ jobs:
               ProjectName="$PROJECT_NAME" \
               EnvironmentName="$ENVIRONMENT_NAME" \
               DatabaseProtectionMode="$DATABASE_PROTECTION_MODE" \
-              DatabasePassword="${{ secrets.DB_PASSWORD }}" \
+              BootstrapApplicationSecret=false \
               CreateApplicationServices=true
 
       - name: Diagnose ECS service deployment failure
@@ -377,7 +379,7 @@ jobs:
               ProjectName="$PROJECT_NAME" \
               EnvironmentName="$ENVIRONMENT_NAME" \
               DatabaseProtectionMode="$DATABASE_PROTECTION_MODE" \
-              DatabasePassword="${{ secrets.DB_PASSWORD }}" \
+              BootstrapApplicationSecret=false \
               CreateApplicationServices=true \
               ApiOriginDomain="$eks_api_host"
 

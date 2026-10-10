@@ -52,11 +52,10 @@ aws cloudformation deploy `
 | Secret | Value |
 | --- | --- |
 | `AWS_DEPLOY_ROLE_ARN` | `DeploymentRoleArn` from the bootstrap stack. |
-| `DB_PASSWORD` | New MySQL password, 8-64 characters. Only use letters, digits, and `! # $ % ^ & * ( ) _ + . -`. |
 
 5. Push a commit to `main`. The first CD run creates the AWS infrastructure and ECR repositories, publishes the images, then starts the ECS services.
 
-The workflow uses short-lived GitHub OIDC credentials. Do not add AWS access keys to GitHub secrets.
+The workflow uses short-lived GitHub OIDC credentials. Do not add AWS access keys or database passwords to GitHub secrets. The first deployment creates a 32-character database password inside AWS Secrets Manager.
 
 ## Database Protection Modes
 
@@ -64,9 +63,13 @@ The CD workflow currently passes `DATABASE_PROTECTION_MODE=development`. This is
 
 Before a real production deployment, change this value in `.github/workflows/cd.yml` to `production`. Production mode enables RDS deletion protection and uses CloudFormation snapshots for delete and replacement operations.
 
-## Payment and Email Secrets
+## Application Secrets
 
-The main stack creates an AWS Secrets Manager secret with the output name `ApplicationSecretsArn`. After the first deployment, update its JSON value in AWS Secrets Manager while preserving `DB_PASSWORD`:
+The main stack creates an AWS Secrets Manager secret with the output name `ApplicationSecretsArn`. CloudFormation uses its `DB_PASSWORD` value through a versionless dynamic reference; ECS reads it with task-definition secret injection and the EKS deployment reads the same secret only during Kubernetes Secret creation.
+
+For an existing stack, this migration keeps the current secret value. Before deploying, verify privately that `wonderland/production/application` has a `DB_PASSWORD` key and that it matches the current RDS master password. Do not paste that value into GitHub, CloudFormation parameters, source files, or logs.
+
+After the first deployment, update payment and email fields in AWS Secrets Manager while preserving `DB_PASSWORD`:
 
 ```json
 {
