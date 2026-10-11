@@ -290,6 +290,16 @@ jobs:
             exit 1
           fi
 
+          configured_service_role=$(aws amplify get-app \
+            --app-id "$amplify_app_id" \
+            --query 'app.iamServiceRoleArn' \
+            --output text \
+            --no-cli-pager)
+          if [ -n "$configured_service_role" ] && [ "$configured_service_role" != "None" ]; then
+            echo "::error title=Unexpected Amplify service role::The static WEB app still has $configured_service_role configured. Remove the role association before starting a build."
+            exit 1
+          fi
+
           amplify_job_id=$(aws amplify start-job \
             --app-id "$amplify_app_id" \
             --branch-name main \
