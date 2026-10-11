@@ -110,10 +110,18 @@ Resources:
                   Fn::Sub: 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${ProjectName}-*'
 
               # Limit inspection to the EKS managed-node-group service-linked-role path.
-              - Sid: AllowEKSServiceLinkedRoleAccess
+              - Sid: ReadEksNodegroupServiceLinkedRole
                 Effect: Allow
                 Action: iam:GetRole
                 Resource: !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/aws-service-role/eks-nodegroup.amazonaws.com/*'
+
+              - Sid: CreateEksNodegroupServiceLinkedRole
+                Effect: Allow
+                Action: iam:CreateServiceLinkedRole
+                Resource: !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/aws-service-role/eks-nodegroup.amazonaws.com/AWSServiceRoleForAmazonEKSNodegroup'
+                Condition:
+                  StringEquals:
+                    iam:AWSServiceName: eks-nodegroup.amazonaws.com
 
               - Sid: PassWonderlandRuntimeRoles
                 Effect: Allow
@@ -203,7 +211,6 @@ Resources:
                       - rds.amazonaws.com
                       - servicediscovery.amazonaws.com
                       - eks.amazonaws.com
-                      - eks-nodegroup.amazonaws.com
                       - amplify.amazonaws.com
 
 Outputs:
