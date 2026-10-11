@@ -263,6 +263,10 @@ jobs:
             echo "::error title=API endpoint is unavailable::$STACK_NAME must publish a valid public ApiUrl ending in /api before deploying Amplify."
             exit 1
           fi
+          if [ "$api_url" != "$api_gateway_base_url/api" ]; then
+            echo "::error title=API output mismatch::ApiOriginUrl and ApiUrl must describe the same public API endpoint."
+            exit 1
+          fi
 
           echo "Using public API origin $api_gateway_base_url for the Amplify frontend build."
           echo "The frontend will send API requests to $api_url."
@@ -315,6 +319,22 @@ jobs:
               --query 'job.steps[].[stepName,status,statusReason,logUrl]' \
               --output table \
               --no-cli-pager || true
+
+            failed_log_urls=$(aws amplify get-job \
+              --app-id "$amplify_app_id" \
+              --branch-name main \
+              --job-id "$amplify_job_id" \
+              --query "job.steps[?status=='FAILED'].logUrl" \
+              --output text \
+              --no-cli-pager 2>/dev/null || true)
+            if [ -n "$failed_log_urls" ] && [ "$failed_log_urls" != "None" ]; then
+              echo 'Failed Amplify build-step log excerpt:'
+              for log_url in $failed_log_urls; do
+                if ! (set -o pipefail; curl --fail --silent --show-error --location "$log_url" | tail -n 120); then
+                  echo 'Unable to retrieve the failed build-step log excerpt.'
+                fi
+              done
+            fi
           }
 
           for attempt in {1..60}; do
