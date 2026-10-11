@@ -39,11 +39,11 @@ The CD job reads the existing AWS Secrets Manager secret at deployment time and 
 
 CI validates Docker builds, Node syntax, available tests, the React build, CloudFormation templates, and Kubernetes manifests.
 
-Normal push deployment stays ECS-based. EKS runs only through **Actions -> Continuous Deployment -> Run workflow** with `deploy_eks` checked. The EKS job creates or updates `wonderland-eks`, configures `kubectl`, deploys commit-SHA ECR images, waits for rollouts, creates the ALB, health-checks it, promotes CloudFront to EKS, invalidates CloudFront, and checks the public URLs. Failed jobs print CloudFormation and Kubernetes events; they do not delete resources.
+Every successful deployment on `main`, including manual workflow runs, creates or updates `wonderland-eks`, configures `kubectl`, deploys commit-SHA ECR images, waits for rollouts, creates the ALB, health-checks it, promotes CloudFront to EKS, invalidates CloudFront, and checks the public URLs. Failed jobs print CloudFormation and Kubernetes events; they do not delete resources.
 
 Before using that manual workflow, update the existing `wonderland-github-oidc` CloudFormation stack with `infrastructure/github-oidc-role.yaml`. This adds EKS deployment actions to `wonderland-github-actions-deployer` without changing its GitHub OIDC trust policy.
 
-AWS Console: **CloudFormation -> wonderland-github-oidc -> Update -> Replace current template -> Upload template -> Next -> acknowledge IAM changes -> Update stack**. Wait for `UPDATE_COMPLETE`, then run the manual EKS workflow. This manual workflow is the approval point that creates billable EKS, EC2, and ALB resources.
+AWS Console: **CloudFormation -> wonderland-github-oidc -> Update -> Replace current template -> Upload template -> Next -> acknowledge IAM changes -> Update stack**. Wait for `UPDATE_COMPLETE`, then push to `main` or run the deployment workflow. The deployment creates billable EKS, EC2, and ALB resources.
 
 ## Phase 5: Frontend hosting and TLS
 

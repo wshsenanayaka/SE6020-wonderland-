@@ -4,12 +4,6 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
-    inputs:
-      deploy_eks:
-        description: Provision or update the opt-in EKS migration stack and deploy Kubernetes workloads.
-        required: true
-        default: false
-        type: boolean
 
 permissions:
   contents: read
@@ -215,9 +209,8 @@ jobs:
           echo "API: $api_url"
 
   deploy-eks:
-    name: Deploy opt-in EKS migration
+    name: Deploy EKS migration
     needs: deploy
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.deploy_eks }}
     runs-on: ubuntu-latest
     environment: production
 
