@@ -114,7 +114,7 @@ Resources:
               - Sid: ReadEksNodegroupServiceLinkedRole
                 Effect: Allow
                 Action: iam:GetRole
-                Resource: !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/aws-service-role/eks-nodegroup.amazonaws.com/AWSServiceRoleForAmazonEKSNodegroup'
+                Resource: !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/aws-service-role/eks-nodegroup.amazonaws.com/*'
 
               - Sid: PassWonderlandRuntimeRoles
                 Effect: Allow
