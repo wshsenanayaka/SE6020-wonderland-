@@ -296,7 +296,19 @@ jobs:
             --output text \
             --no-cli-pager)
           if [ -n "$configured_service_role" ] && [ "$configured_service_role" != "None" ]; then
-            echo "::error title=Unexpected Amplify service role::The static WEB app still has $configured_service_role configured. Remove the role association before starting a build."
+            echo "Clearing the stale Amplify service role from static WEB app: $configured_service_role"
+            aws amplify update-app \
+              --app-id "$amplify_app_id" \
+              --iam-service-role-arn "" \
+              --no-cli-pager >/dev/null
+            configured_service_role=$(aws amplify get-app \
+              --app-id "$amplify_app_id" \
+              --query 'app.iamServiceRoleArn' \
+              --output text \
+              --no-cli-pager)
+          fi
+          if [ -n "$configured_service_role" ] && [ "$configured_service_role" != "None" ]; then
+            echo "::error title=Amplify service role remains configured::Expected no IAM service role for static WEB app, but found $configured_service_role after attempting to clear it."
             exit 1
           fi
 
