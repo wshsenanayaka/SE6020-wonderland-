@@ -453,16 +453,29 @@ jobs:
       - name: Verify EKS node group service-linked role access
         run: |
           caller_arn=$(aws sts get-caller-identity --query Arn --output text --no-cli-pager)
-          service_linked_role_arn=$(aws iam get-role \
+          aws_partition=$(cut -d: -f2 <<<"$caller_arn")
+          account_id=$(aws sts get-caller-identity --query Account --output text --no-cli-pager)
+          expected_caller_prefix="arn:${aws_partition}:sts::${account_id}:assumed-role/${PROJECT_NAME}-github-actions-deployer/"
+          if [[ "$caller_arn" != "$expected_caller_prefix"* ]]; then
+            echo "::error title=Unexpected AWS deployment role::AWS_DEPLOY_ROLE_ARN must assume ${PROJECT_NAME}-github-actions-deployer. Active identity: $caller_arn"
+            exit 1
+          fi
+
+          if ! service_linked_role_arn=$(aws iam get-role \
             --role-name AWSServiceRoleForAmazonEKSNodegroup \
             --query 'Role.Arn' \
             --output text \
-            --no-cli-pager)
-          aws_partition=$(cut -d: -f2 <<<"$caller_arn")
-          account_id=$(aws sts get-caller-identity --query Account --output text --no-cli-pager)
+            --no-cli-pager); then
+            echo "::error title=EKS bootstrap IAM permission missing::$caller_arn cannot read AWSServiceRoleForAmazonEKSNodegroup. Update the wonderland-github-oidc stack from an administrator session before rerunning CD."
+            echo 'Required permission: iam:GetRole on arn:aws:iam::840514731609:role/aws-service-role/eks-nodegroup.amazonaws.com/*'
+            exit 1
+          fi
           expected_role_arn="arn:${aws_partition}:iam:${account_id}:role/aws-service-role/eks-nodegroup.amazonaws.com/AWSServiceRoleForAmazonEKSNodegroup"
 
-          test "$service_linked_role_arn" = "$expected_role_arn"
+          if [ "$service_linked_role_arn" != "$expected_role_arn" ]; then
+            echo "::error title=Unexpected EKS service-linked role ARN::Expected $expected_role_arn but received $service_linked_role_arn. Review the AWS account and IAM role configuration."
+            exit 1
+          fi
           echo "Deployment identity: $caller_arn"
           echo "EKS node group service-linked role access verified: $service_linked_role_arn"
 

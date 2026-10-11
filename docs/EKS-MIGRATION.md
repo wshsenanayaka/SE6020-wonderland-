@@ -41,9 +41,22 @@ CI validates Docker builds, Node syntax, available tests, the React build, Cloud
 
 Every successful deployment on `main`, including manual workflow runs, creates or updates `wonderland-eks`, configures `kubectl`, deploys commit-SHA ECR images, waits for rollouts, creates the ALB, health-checks it, promotes CloudFront to EKS, invalidates CloudFront, and checks the public URLs. Failed jobs print CloudFormation and Kubernetes events; they do not delete resources.
 
-Before the automated EKS workflow runs, update the existing `wonderland-github-oidc` CloudFormation stack with `infrastructure/github-oidc-role.yaml`. This adds EKS deployment actions to `wonderland-github-actions-deployer` without changing its GitHub OIDC trust policy.
+Before the automated EKS workflow runs, update the existing `wonderland-github-oidc` CloudFormation stack with `infrastructure/github-oidc-role.yaml`. This adds EKS deployment actions to `wonderland-github-actions-deployer` without changing its GitHub OIDC trust policy. It also grants the narrowly scoped `iam:GetRole` permission for the EKS managed-node-group service-linked-role path `arn:aws:iam::840514731609:role/aws-service-role/eks-nodegroup.amazonaws.com/*`.
 
-AWS Console: **CloudFormation -> wonderland-github-oidc -> Update -> Replace current template -> Upload template -> Next -> acknowledge IAM changes -> Update stack**. Wait for `UPDATE_COMPLETE`, then push to `main` or run the deployment workflow. The deployment creates billable EKS, EC2, and ALB resources.
+AWS Console: **CloudFormation -> wonderland-github-oidc -> Update -> Replace current template -> Upload template -> Next -> acknowledge IAM changes -> Update stack**. Run this one-time bootstrap update from an administrator or approved infrastructure-maintainer session, not from GitHub Actions. Wait for `UPDATE_COMPLETE`, then push to `main` or run the deployment workflow. The deployment creates billable EKS, EC2, and ALB resources.
+
+Verify the bootstrap update before running EKS deployment:
+
+```bash
+aws iam simulate-principal-policy \
+  --policy-source-arn arn:aws:iam::840514731609:role/wonderland-github-actions-deployer \
+  --action-names iam:GetRole \
+  --resource-arns arn:aws:iam::840514731609:role/aws-service-role/eks-nodegroup.amazonaws.com/AWSServiceRoleForAmazonEKSNodegroup \
+  --query 'EvaluationResults[0].EvalDecision' \
+  --output text
+```
+
+The command must return `allowed`. The CD workflow repeats this read-only check with its GitHub OIDC credentials and stops before EKS provisioning if the permission is absent. Do not use the GitHub deployment role to grant itself permissions.
 
 ## Phase 5: Frontend hosting and TLS
 
