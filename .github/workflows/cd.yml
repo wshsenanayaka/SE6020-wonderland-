@@ -299,6 +299,22 @@ jobs:
             exit 1
           fi
 
+          amplify_github_token=$(aws secretsmanager get-secret-value \
+            --secret-id "$AMPLIFY_GITHUB_TOKEN_SECRET_NAME" \
+            --query 'SecretString' \
+            --output text \
+            --no-cli-pager | jq -er '.token') || {
+              echo "::error title=Amplify GitHub token is invalid::$AMPLIFY_GITHUB_TOKEN_SECRET_NAME must contain JSON with a non-empty token key."
+              exit 1
+            }
+          echo "::add-mask::$amplify_github_token"
+          echo 'Refreshing the existing Amplify GitHub repository connection.'
+          aws amplify update-app \
+            --app-id "$amplify_app_id" \
+            --access-token "$amplify_github_token" \
+            --no-cli-pager >/dev/null
+          unset amplify_github_token
+
           # This static WEB app uses the existing dedicated Amplify service role.
           app_platform=""
           configured_service_role=""

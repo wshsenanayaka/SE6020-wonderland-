@@ -31,7 +31,7 @@ The Amplify stack resolves this value directly from Secrets Manager. It is not p
 
 The workflow fails rather than reporting success when the Amplify GitHub token secret, Amplify build, EKS node group, Kubernetes rollout, or endpoint health check fails.
 
-The Amplify app is a static Vite `WEB` application. CloudFormation assigns the existing `wonderland-amplify-service-role` as its service role and does not configure an SSR compute role. Before every build, the workflow requires three consecutive reads showing `WEB`, that exact service-role ARN, and no compute role.
+The Amplify app is a static Vite `WEB` application. CloudFormation assigns the existing `wonderland-amplify-service-role` as its service role and does not configure an SSR compute role. Before every build, the workflow refreshes the existing GitHub repository connection from the masked Secrets Manager token and requires three consecutive reads showing `WEB`, that exact service-role ARN, and no compute role.
 
 ## Frontend and API URLs
 
@@ -87,7 +87,7 @@ Expected values are `UPDATE_COMPLETE` or `CREATE_COMPLETE` for the stacks, `ACTI
 | `iam:ListAttachedRolePolicies` denied | Update `wonderland-github-oidc` with the current OIDC role template, wait for `UPDATE_COMPLETE`, then rerun CD. |
 | EKS stack is `ROLLBACK_COMPLETE` or `ROLLBACK_FAILED` | Read CloudFormation Events, resolve the specific retained resource or permission issue, then recover or manually delete only the failed EKS stack. Never delete the database stack automatically. |
 | Amplify token secret missing | Create the specified Secrets Manager secret with JSON key `token`, then rerun CD. |
-| Amplify cannot assume an IAM role | In IAM, confirm `wonderland-amplify-service-role` trusts `amplify.amazonaws.com` with `sts:AssumeRole`, then rerun CD. The workflow verifies the configured role ARN before starting the build. |
+| Amplify cannot assume an IAM role | In IAM, confirm `wonderland-amplify-service-role` trusts `amplify.amazonaws.com` with `sts:AssumeRole`. If the workflow confirms that role but the build still fails, reconnect the AWS Amplify GitHub App to `wshsenanayaka/SE6020-wonderland-`, then rerun CD. |
 | Pods are not Ready | Read `kubectl get events -n wonderland --sort-by=.lastTimestamp` and `kubectl logs deployment/<service> -n wonderland`. |
 | Amplify URL cannot call the API | Confirm the EKS ConfigMap has the Amplify URL in `FRONTEND_ORIGIN`, then restart the affected deployment. |
 
