@@ -452,6 +452,9 @@ jobs:
 
       - name: Verify EKS node group service-linked role access
         run: |
+          # EKS performs this same iam:GetRole authorization during managed
+          # node group creation, so this is a prerequisite rather than a
+          # diagnostic-only check.
           caller_arn=$(aws sts get-caller-identity --query Arn --output text --no-cli-pager)
           aws_partition=$(cut -d: -f2 <<<"$caller_arn")
           account_id=$(aws sts get-caller-identity --query Account --output text --no-cli-pager)
