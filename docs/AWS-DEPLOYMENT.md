@@ -12,7 +12,7 @@ Cognito is not provisioned. The completed application uses its existing Node.js 
 
 1. Use AWS account `840514731609` in `ap-southeast-1`.
 2. GitHub Environment `production` must contain the `AWS_DEPLOY_ROLE_ARN` secret for `wonderland-github-actions-deployer`.
-3. Update the `wonderland-github-oidc` stack from `infrastructure/github-oidc-role.yaml` before an EKS deployment. This preserves the immutable GitHub OIDC subject and adds EKS, node-group, and Amplify deployment permissions.
+3. Update the `wonderland-github-oidc` stack from `infrastructure/github-oidc-role.yaml` before an EKS or Amplify deployment. This preserves the immutable GitHub OIDC subject and adds EKS, node-group, dedicated Amplify role-management, and service-restricted `iam:PassRole` permissions.
 4. In AWS Secrets Manager, manually create `wonderland/production/amplify-github-token` as JSON with a `token` key. Use a GitHub fine-grained token that can read `wshsenanayaka/SE6020-wonderland-` and authorize the Amplify GitHub App. Never commit this token or add it to GitHub Actions secrets.
 
 ```json
@@ -30,6 +30,8 @@ The Amplify stack resolves this value directly from Secrets Manager. It is not p
 5. It deploys `wonderland-eks`, waits for the EKS cluster and `primary` managed node group, installs the AWS Load Balancer Controller, creates the Kubernetes Secret from Secrets Manager, applies manifests, waits for rollouts, and promotes CloudFront `/api/*` to the EKS ALB.
 
 The workflow fails rather than reporting success when the Amplify GitHub token secret, Amplify build, EKS node group, Kubernetes rollout, or endpoint health check fails.
+
+The Amplify app is a static Vite `WEB` application. The `wonderland-production-amplify-hosting` role is dedicated to Amplify and is trusted only by `amplify.amazonaws.com` from this AWS account's Amplify app ARNs. It has no data, database, ECR, or administrative permissions because static hosting does not deploy an Amplify backend or SSR compute resources. CloudFormation updates the existing Amplify app's `IAMServiceRole` in place.
 
 ## Frontend and API URLs
 
@@ -69,6 +71,15 @@ kubectl rollout status deployment/api-gateway -n wonderland
 
 Expected values are `UPDATE_COMPLETE` or `CREATE_COMPLETE` for the stacks, `ACTIVE` for EKS and its node group, Ready Kubernetes nodes, and Running/Ready Pods. Use the workflow's printed Amplify URL for the HTTPS frontend check.
 
+## AWS Console verification
+
+- **CloudFormation** -> **Stacks**: verify `wonderland-github-oidc`, `wonderland-production`, `wonderland-amplify`, and `wonderland-eks` are `UPDATE_COMPLETE` or `CREATE_COMPLETE`.
+- **Amplify** -> `wonderland-production-frontend` -> `main`: inspect the latest deployment, its build-step logs, the assigned `wonderland-production-amplify-hosting` service role, and the generated frontend URL.
+- **ECR** -> **Private repositories**: verify each `wonderland-production-*` repository has an image tagged with the Git commit SHA.
+- **EKS** -> **Clusters** -> `wonderland-production-eks`: check the `primary` managed node group and the Resources view for the Wonderland workloads.
+- **EC2** -> **Instances**: filter by the `aws:eks:cluster-name` tag with value `wonderland-production-eks` to see the managed worker nodes.
+- **EC2** -> **Load balancers**: find the internet-facing EKS application load balancer created for `wonderland-api`; its target group must show healthy API gateway targets.
+
 ## Recovery and common errors
 
 | Symptom | Safe action |
@@ -76,6 +87,7 @@ Expected values are `UPDATE_COMPLETE` or `CREATE_COMPLETE` for the stacks, `ACTI
 | `iam:ListAttachedRolePolicies` denied | Update `wonderland-github-oidc` with the current OIDC role template, wait for `UPDATE_COMPLETE`, then rerun CD. |
 | EKS stack is `ROLLBACK_COMPLETE` or `ROLLBACK_FAILED` | Read CloudFormation Events, resolve the specific retained resource or permission issue, then recover or manually delete only the failed EKS stack. Never delete the database stack automatically. |
 | Amplify token secret missing | Create the specified Secrets Manager secret with JSON key `token`, then rerun CD. |
+| Amplify cannot assume its IAM role | Update `wonderland-github-oidc`, then rerun CD so `wonderland-amplify` creates `wonderland-production-amplify-hosting` and updates the app role in place. |
 | Pods are not Ready | Read `kubectl get events -n wonderland --sort-by=.lastTimestamp` and `kubectl logs deployment/<service> -n wonderland`. |
 | Amplify URL cannot call the API | Confirm the EKS ConfigMap has the Amplify URL in `FRONTEND_ORIGIN`, then restart the affected deployment. |
 

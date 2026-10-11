@@ -96,16 +96,38 @@ Resources:
                   - iam:CreateRole
                   - iam:DeleteRole
                   - iam:GetRole
+                  - iam:GetRolePolicy
                   - iam:ListAttachedRolePolicies
-                  - iam:PassRole
+                  - iam:ListRolePolicies
                   - iam:AttachRolePolicy
                   - iam:DetachRolePolicy
                   - iam:PutRolePolicy
                   - iam:DeleteRolePolicy
                   - iam:TagRole
                   - iam:UntagRole
+                  - iam:UpdateAssumeRolePolicy
                 Resource:
                   Fn::Sub: 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${ProjectName}-*'
+
+              - Sid: PassWonderlandRuntimeRoles
+                Effect: Allow
+                Action: iam:PassRole
+                Resource: !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${ProjectName}-*'
+                Condition:
+                  StringEquals:
+                    iam:PassedToService:
+                      - ecs-tasks.amazonaws.com
+                      - eks.amazonaws.com
+                      - ec2.amazonaws.com
+                      - pods.eks.amazonaws.com
+
+              - Sid: PassAmplifyHostingRoleToAmplifyOnly
+                Effect: Allow
+                Action: iam:PassRole
+                Resource: !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${ProjectName}-*-amplify-hosting'
+                Condition:
+                  StringEquals:
+                    iam:PassedToService: amplify.amazonaws.com
 
               - Sid: CreateAndDiscoverAmplifyApps
                 Effect: Allow

@@ -29,6 +29,25 @@ Parameters:
     Description: Public CloudFront origin embedded into the Vite build as VITE_API_BASE_URL.
 
 Resources:
+  # This static WEB app has no Amplify backend or SSR compute resources. The role
+  # only resolves a stale/invalid app role while keeping Amplify's access scoped.
+  AmplifyHostingServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectName}-${EnvironmentName}-amplify-hosting'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: amplify.amazonaws.com
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+              ArnLike:
+                aws:SourceArn: !Sub 'arn:${AWS::Partition}:amplify:${AWS::Region}:${AWS::AccountId}:apps/*'
+
   AmplifyApp:
     Type: AWS::Amplify::App
     Properties:
@@ -37,6 +56,7 @@ Resources:
       Platform: WEB
       Repository: !Ref GitHubRepositoryUrl
       AccessToken: !Sub '{{resolve:secretsmanager:${GitHubAccessTokenSecretName}:SecretString:token}}'
+      IAMServiceRole: !GetAtt AmplifyHostingServiceRole.Arn
       EnableBranchAutoDeletion: false
       EnvironmentVariables:
         - Name: AMPLIFY_MONOREPO_APP_ROOT
@@ -90,6 +110,9 @@ Outputs:
   AmplifyAppId:
     Description: Amplify application identifier.
     Value: !GetAtt AmplifyApp.AppId
+  AmplifyServiceRoleArn:
+    Description: Dedicated IAM role assumed by Amplify Hosting for this static frontend.
+    Value: !GetAtt AmplifyHostingServiceRole.Arn
   AmplifyFrontendUrl:
     Description: Public HTTPS URL for the main Amplify branch.
     Value: !Sub 'https://${GitHubBranch}.${AmplifyApp.DefaultDomain}'
