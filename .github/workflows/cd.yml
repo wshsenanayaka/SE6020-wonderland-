@@ -460,6 +460,7 @@ jobs:
             echo "::error title=Unexpected AWS deployment role::AWS_DEPLOY_ROLE_ARN must assume ${PROJECT_NAME}-github-actions-deployer. Active identity: $caller_arn"
             exit 1
           fi
+          echo "Deployment identity: $caller_arn"
 
           if ! service_linked_role_arn=$(aws iam get-role \
             --role-name AWSServiceRoleForAmazonEKSNodegroup \
@@ -468,6 +469,7 @@ jobs:
             --no-cli-pager); then
             echo "::error title=EKS bootstrap IAM permission missing::$caller_arn cannot read AWSServiceRoleForAmazonEKSNodegroup. Update the wonderland-github-oidc stack from an administrator session before rerunning CD."
             echo 'Required permission: iam:GetRole on arn:aws:iam::840514731609:role/aws-service-role/eks-nodegroup.amazonaws.com/*'
+            echo 'The AWS CLI error above includes an authorization ID and console link. Review it with an administrator to identify an SCP, session policy, or other effective deny.'
             exit 1
           fi
           expected_role_arn="arn:${aws_partition}:iam:${account_id}:role/aws-service-role/eks-nodegroup.amazonaws.com/AWSServiceRoleForAmazonEKSNodegroup"
@@ -476,7 +478,6 @@ jobs:
             echo "::error title=Unexpected EKS service-linked role ARN::Expected $expected_role_arn but received $service_linked_role_arn. Review the AWS account and IAM role configuration."
             exit 1
           fi
-          echo "Deployment identity: $caller_arn"
           echo "EKS node group service-linked role access verified: $service_linked_role_arn"
 
       - name: Create or update EKS infrastructure

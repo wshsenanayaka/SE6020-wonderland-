@@ -58,6 +58,20 @@ aws iam simulate-principal-policy \
 
 The command must return `allowed`. The CD workflow repeats this read-only check with its GitHub OIDC credentials and stops before EKS provisioning if the permission is absent. Do not use the GitHub deployment role to grant itself permissions.
 
+### Investigating a simulator/live mismatch
+
+The policy simulator can return `allowed` while a live GitHub OIDC session is denied because live authorization also depends on session policies, AWS Organizations controls, and request context. This repository does not configure `inline-session-policy` or `managed-session-policies` on `aws-actions/configure-aws-credentials`; the workflow prints the active STS caller ARN before testing `iam:GetRole`.
+
+When the live check fails, copy the authorization ID from the AWS CLI error and, within 24 hours, run this from an administrator session. Use the Region shown in the error's Authorization Details URL; IAM denials in this deployment normally use `us-east-1`.
+
+```bash
+aws iam-toolbox get-request-authorization-details \
+  --region us-east-1 \
+  --authorization-id <authorization-id>
+```
+
+This requires `iam:GetRequestAuthorizationDetails` and returns the policies AWS evaluated for that exact denied request. If it identifies an AWS Organizations service control policy, an Organizations administrator must allow `iam:GetRole` for the deployment role and the EKS service-linked-role path. Do not add `AdministratorAccess`, `iam:*`, or a self-updating IAM step to the GitHub workflow.
+
 ## Phase 5: Frontend hosting and TLS
 
 The existing main stack already has a private S3 bucket, CloudFront Origin Access Control, `DefaultRootObject: index.html`, and 403/404 SPA fallbacks. CD builds `frontend/dist`, uploads it, invalidates CloudFront, and prints the `FrontendUrl`. The EKS job verifies that frontend after backend promotion.
