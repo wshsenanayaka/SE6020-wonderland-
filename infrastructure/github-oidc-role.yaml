@@ -121,10 +121,10 @@ Resources:
                       - ec2.amazonaws.com
                       - pods.eks.amazonaws.com
 
-              - Sid: PassAmplifyHostingRoleToAmplifyOnly
+              - Sid: PassAmplifyServiceRoleToAmplifyOnly
                 Effect: Allow
                 Action: iam:PassRole
-                Resource: !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${ProjectName}-*-amplify-hosting'
+                Resource: !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${ProjectName}-amplify-service-role'
                 Condition:
                   StringEquals:
                     iam:PassedToService: amplify.amazonaws.com

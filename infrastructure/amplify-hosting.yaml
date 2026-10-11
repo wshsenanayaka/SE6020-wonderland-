@@ -37,6 +37,7 @@ Resources:
       Platform: WEB
       Repository: !Ref GitHubRepositoryUrl
       AccessToken: !Sub '{{resolve:secretsmanager:${GitHubAccessTokenSecretName}:SecretString:token}}'
+      IAMServiceRole: !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${ProjectName}-amplify-service-role'
       EnableBranchAutoDeletion: false
       EnvironmentVariables:
         - Name: AMPLIFY_MONOREPO_APP_ROOT
@@ -90,6 +91,9 @@ Outputs:
   AmplifyAppId:
     Description: Amplify application identifier.
     Value: !GetAtt AmplifyApp.AppId
+  AmplifyServiceRoleArn:
+    Description: Existing IAM role used by Amplify Hosting for this application.
+    Value: !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${ProjectName}-amplify-service-role'
   AmplifyFrontendUrl:
     Description: Public HTTPS URL for the main Amplify branch.
     Value: !Sub 'https://${GitHubBranch}.${AmplifyApp.DefaultDomain}'

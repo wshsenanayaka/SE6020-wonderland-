@@ -290,15 +290,16 @@ jobs:
             exit 1
           fi
 
-          # Static Vite hosting uses WEB, not Amplify backend or SSR compute roles.
-          # Explicit empty values clear stale settings left by an earlier app update.
-          aws amplify update-app \
-            --app-id "$amplify_app_id" \
-            --platform WEB \
-            --iam-service-role-arn "" \
-            --compute-role-arn "" \
-            --no-cli-pager >/dev/null
+          amplify_service_role_arn=$(aws cloudformation describe-stacks \
+            --stack-name "$AMPLIFY_STACK_NAME" \
+            --query "Stacks[0].Outputs[?OutputKey=='AmplifyServiceRoleArn'].OutputValue" \
+            --output text)
+          if [ -z "$amplify_service_role_arn" ] || [ "$amplify_service_role_arn" = "None" ]; then
+            echo "::error title=Amplify service role is unavailable::$AMPLIFY_STACK_NAME did not publish AmplifyServiceRoleArn."
+            exit 1
+          fi
 
+          # This static WEB app uses the existing dedicated Amplify service role.
           app_platform=""
           configured_service_role=""
           configured_compute_role=""
@@ -310,7 +311,7 @@ jobs:
               --output text \
               --no-cli-pager)
             if [ "$app_platform" = "WEB" ] \
-              && { [ -z "$configured_service_role" ] || [ "$configured_service_role" = "None" ]; } \
+              && [ "$configured_service_role" = "$amplify_service_role_arn" ] \
               && { [ -z "$configured_compute_role" ] || [ "$configured_compute_role" = "None" ]; }; then
               stable_configuration_reads=$((stable_configuration_reads + 1))
               if [ "$stable_configuration_reads" -ge 3 ]; then
@@ -323,11 +324,12 @@ jobs:
           done
           if [ "$stable_configuration_reads" -lt 3 ] \
             || [ "$app_platform" != "WEB" ] \
-            || { [ -n "$configured_service_role" ] && [ "$configured_service_role" != "None" ]; } \
+            || [ "$configured_service_role" != "$amplify_service_role_arn" ] \
             || { [ -n "$configured_compute_role" ] && [ "$configured_compute_role" != "None" ]; }; then
-            echo "::error title=Amplify role configuration remains stale::Expected three consecutive reads of platform WEB without IAM or compute roles. Found platform=$app_platform, iamServiceRoleArn=$configured_service_role, computeRoleArn=$configured_compute_role."
+            echo "::error title=Amplify role configuration is invalid::Expected three consecutive reads of platform WEB with iamServiceRoleArn=$amplify_service_role_arn and no compute role. Found platform=$app_platform, iamServiceRoleArn=$configured_service_role, computeRoleArn=$configured_compute_role."
             exit 1
           fi
+          echo "Amplify configuration verified: platform=WEB, service role=$amplify_service_role_arn, compute role unset."
 
           amplify_job_id=$(aws amplify start-job \
             --app-id "$amplify_app_id" \
