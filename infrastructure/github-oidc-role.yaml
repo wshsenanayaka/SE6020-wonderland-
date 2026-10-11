@@ -109,12 +109,7 @@ Resources:
                 Resource:
                   Fn::Sub: 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${ProjectName}-*'
 
-              # Limit inspection to the EKS managed-node-group service-linked-role path.
-              - Sid: ReadEksNodegroupServiceLinkedRole
-                Effect: Allow
-                Action: iam:GetRole
-                Resource: !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/aws-service-role/eks-nodegroup.amazonaws.com/*'
-
+              # EKS creates this AWS-managed role when it first creates a managed node group.
               - Sid: CreateEksNodegroupServiceLinkedRole
                 Effect: Allow
                 Action: iam:CreateServiceLinkedRole
