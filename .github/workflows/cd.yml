@@ -483,29 +483,6 @@ jobs:
           esac
 
           expected_role_arn="arn:${aws_partition}:iam:${account_id}:role/aws-service-role/eks-nodegroup.amazonaws.com/AWSServiceRoleForAmazonEKSNodegroup"
-          deployment_role_name="${PROJECT_NAME}-github-actions-deployer"
-          if ! deployment_policy=$(aws iam get-role-policy \
-            --role-name "$deployment_role_name" \
-            --policy-name "${PROJECT_NAME}-deployment-policy" \
-            --output json \
-            --no-cli-pager); then
-            echo "::error title=IAM bootstrap policy cannot be inspected::$caller_arn cannot read its expected inline policy. Update $bootstrap_stack_name from an administrator session before rerunning CD."
-            exit 1
-          fi
-
-          if ! jq -e --arg expected_role_arn "$expected_role_arn" '
-            .RolePolicy.PolicyDocument.Statement[]?
-            | select(
-                .Sid == "ReadEksNodegroupServiceLinkedRole"
-                and .Effect == "Allow"
-                and .Action == "iam:GetRole"
-                and .Resource == $expected_role_arn
-              )
-          ' >/dev/null <<<"$deployment_policy"; then
-            echo "::error title=IAM bootstrap policy is stale::$bootstrap_stack_name does not grant iam:GetRole on $expected_role_arn. Update the stack from an administrator session before rerunning CD."
-            exit 1
-          fi
-
           if ! service_linked_role_arn=$(aws iam get-role \
             --role-name AWSServiceRoleForAmazonEKSNodegroup \
             --query 'Role.Arn' \
@@ -513,6 +490,7 @@ jobs:
             --no-cli-pager); then
             echo "::error title=EKS node group role access missing::$caller_arn cannot read AWSServiceRoleForAmazonEKSNodegroup. Update $bootstrap_stack_name from an administrator session before rerunning CD."
             echo "Required permission: iam:GetRole on $expected_role_arn"
+            echo 'The AWS CLI error above is the authoritative authorization result. If the resource-scoped allow is deployed, review IAM permissions boundaries and AWS Organizations SCPs for an external deny.'
             exit 1
           fi
 
