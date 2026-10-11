@@ -299,17 +299,22 @@ jobs:
           fi
 
           report_amplify_job() {
+            echo 'Amplify job summary:'
             aws amplify get-job \
               --app-id "$amplify_app_id" \
               --branch-name main \
               --job-id "$amplify_job_id" \
-              --output json \
-              --no-cli-pager > amplify-job.json
-            jq -r '
-              "Amplify job status: \(.job.summary.status)",
-              "Amplify job reason: \(.job.summary.statusReason // \"No status reason supplied.\")",
-              (.job.steps[]? | "\(.stepName): \(.status)\n  \(.logUrl // \"No log URL supplied.\")")
-            ' amplify-job.json
+              --query 'job.summary.[status,statusReason]' \
+              --output table \
+              --no-cli-pager || true
+            echo 'Amplify build-step logs:'
+            aws amplify get-job \
+              --app-id "$amplify_app_id" \
+              --branch-name main \
+              --job-id "$amplify_job_id" \
+              --query 'job.steps[].[stepName,status,statusReason,logUrl]' \
+              --output table \
+              --no-cli-pager || true
           }
 
           for attempt in {1..60}; do
