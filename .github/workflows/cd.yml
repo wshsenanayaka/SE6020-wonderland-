@@ -642,16 +642,57 @@ jobs:
 
       - name: Verify EKS API and promote CloudFront origin
         run: |
-          for attempt in {1..30}; do
+          eks_api_host=""
+          echo 'Waiting for Kubernetes ingress hostname for up to 10 minutes...'
+          for attempt in {1..40}; do
             eks_api_host=$(kubectl get ingress wonderland-api -n wonderland \
               --output jsonpath='{.status.loadBalancer.ingress[0].hostname}')
             if [ -n "$eks_api_host" ]; then
+              echo "Ingress hostname is available: $eks_api_host"
               break
             fi
-            sleep 20
+            echo "Ingress hostname is not available yet (attempt $attempt/40); retrying in 15 seconds."
+            sleep 15
           done
-          test -n "$eks_api_host"
-          curl --fail --retry 5 --retry-delay 5 "http://$eks_api_host/health"
+          if [ -z "$eks_api_host" ]; then
+            echo '::error title=EKS ingress hostname timed out::The wonderland-api ingress did not receive an ALB hostname within 10 minutes.'
+            exit 1
+          fi
+
+          echo "Waiting for DNS resolution and API readiness for http://$eks_api_host/health for up to 10 minutes..."
+          api_ready=false
+          for attempt in {1..40}; do
+            if ! getent ahostsv4 "$eks_api_host" >/dev/null; then
+              echo "DNS is not available for $eks_api_host (attempt $attempt/40); retrying in 15 seconds."
+              sleep 15
+              continue
+            fi
+
+            echo "DNS resolved for $eks_api_host; checking API Gateway health (attempt $attempt/40)."
+            if health_response=$(curl --silent --show-error --fail --max-time 15 \
+              --write-out '\n%{http_code}' \
+              "http://$eks_api_host/health" 2>&1); then
+              http_status=${health_response##*$'\n'}
+              health_body=${health_response%$'\n'*}
+              if [ "$http_status" = '200' ] && jq -e \
+                '.service == "api-gateway" and .status == "ok"' \
+                >/dev/null <<<"$health_body"; then
+                echo 'API Gateway health check passed with HTTP 200.'
+                api_ready=true
+                break
+              fi
+              echo "API Gateway returned HTTP $http_status without the expected healthy response; retrying in 15 seconds."
+            else
+              echo "API Gateway health request failed: $health_response"
+              echo 'Retrying API readiness check in 15 seconds.'
+            fi
+            sleep 15
+          done
+
+          if [ "$api_ready" != true ]; then
+            echo "::error title=EKS API readiness timed out::$eks_api_host did not resolve and return the expected API Gateway HTTP 200 health response within 10 minutes. CloudFront will not be promoted."
+            exit 1
+          fi
 
           aws cloudformation deploy \
             --stack-name "$STACK_NAME" \
