@@ -450,7 +450,7 @@ jobs:
       - name: Validate EKS CloudFormation template
         run: aws cloudformation validate-template --template-body file://infrastructure/eks-cluster.yaml
 
-      - name: Verify EKS deployment identity
+      - name: Verify IAM bootstrap stack and EKS deployment identity
         run: |
           caller_arn=$(aws sts get-caller-identity --query Arn --output text --no-cli-pager)
           aws_partition=$(cut -d: -f2 <<<"$caller_arn")
@@ -461,7 +461,43 @@ jobs:
             exit 1
           fi
           echo "Deployment identity: $caller_arn"
-          echo 'Amazon EKS creates AWSServiceRoleForAmazonEKSNodegroup automatically when it creates the first managed node group.'
+
+          bootstrap_stack_name="${PROJECT_NAME}-github-oidc"
+          if ! bootstrap_stack_status=$(aws cloudformation describe-stacks \
+            --stack-name "$bootstrap_stack_name" \
+            --query 'Stacks[0].StackStatus' \
+            --output text \
+            --no-cli-pager); then
+            echo "::error title=IAM bootstrap stack missing::Update or create $bootstrap_stack_name from an administrator session before deploying $EKS_STACK_NAME. The GitHub Actions role must not update its own permissions."
+            exit 1
+          fi
+
+          case "$bootstrap_stack_status" in
+            CREATE_COMPLETE|UPDATE_COMPLETE)
+              echo "IAM bootstrap stack is ready: $bootstrap_stack_name ($bootstrap_stack_status)"
+              ;;
+            *)
+              echo "::error title=IAM bootstrap stack is not ready::$bootstrap_stack_name is $bootstrap_stack_status. Update or recover it from an administrator session before deploying $EKS_STACK_NAME."
+              exit 1
+              ;;
+          esac
+
+          expected_role_arn="arn:${aws_partition}:iam:${account_id}:role/aws-service-role/eks-nodegroup.amazonaws.com/AWSServiceRoleForAmazonEKSNodegroup"
+          if ! service_linked_role_arn=$(aws iam get-role \
+            --role-name AWSServiceRoleForAmazonEKSNodegroup \
+            --query 'Role.Arn' \
+            --output text \
+            --no-cli-pager); then
+            echo "::error title=EKS node group role access missing::$caller_arn cannot read AWSServiceRoleForAmazonEKSNodegroup. Update $bootstrap_stack_name from an administrator session before rerunning CD."
+            echo "Required permission: iam:GetRole on $expected_role_arn"
+            exit 1
+          fi
+
+          if [ "$service_linked_role_arn" != "$expected_role_arn" ]; then
+            echo "::error title=Unexpected EKS service-linked role ARN::Expected $expected_role_arn but received $service_linked_role_arn. Review the IAM service-linked role in this AWS account."
+            exit 1
+          fi
+          echo "EKS node group service-linked role access verified: $service_linked_role_arn"
 
       - name: Create or update EKS infrastructure
         run: |
