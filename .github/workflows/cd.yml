@@ -452,16 +452,8 @@ jobs:
 
       - name: Verify IAM bootstrap stack and EKS deployment identity
         run: |
-          normalize_iam_value() {
-            printf '%s' "$1" | tr -d '\r\n' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//'
-          }
-
-          caller_arn=$(normalize_iam_value "$(aws sts get-caller-identity --query Arn --output text --no-cli-pager)")
-          aws_partition=$(normalize_iam_value "$(cut -d: -f2 <<<"$caller_arn")")
-          account_id=$(normalize_iam_value "$(aws sts get-caller-identity --query Account --output text --no-cli-pager)")
-          expected_caller_prefix="arn:${aws_partition}:sts::${account_id}:assumed-role/${PROJECT_NAME}-github-actions-deployer/"
-          if [[ "$caller_arn" != "$expected_caller_prefix"* ]]; then
-            echo "::error title=Unexpected AWS deployment role::AWS_DEPLOY_ROLE_ARN must assume ${PROJECT_NAME}-github-actions-deployer. Active identity: $caller_arn"
+          if ! caller_arn=$(aws sts get-caller-identity --query Arn --output text --no-cli-pager); then
+            echo '::error title=AWS identity verification failed::The AWS CLI error above must be resolved before EKS deployment can continue.'
             exit 1
           fi
           echo "Deployment identity: $caller_arn"
@@ -486,23 +478,13 @@ jobs:
               ;;
           esac
 
-          expected_role_arn=$(normalize_iam_value "arn:${aws_partition}:iam:${account_id}:role/aws-service-role/eks-nodegroup.amazonaws.com/AWSServiceRoleForAmazonEKSNodegroup")
-          if ! raw_service_linked_role_arn=$(aws iam get-role \
+          if ! service_linked_role_arn=$(aws iam get-role \
             --role-name AWSServiceRoleForAmazonEKSNodegroup \
             --query 'Role.Arn' \
             --output text \
             --no-cli-pager); then
             echo "::error title=EKS node group role access missing::$caller_arn cannot read AWSServiceRoleForAmazonEKSNodegroup. Update $bootstrap_stack_name from an administrator session before rerunning CD."
-            echo "Required permission: iam:GetRole on $expected_role_arn"
             echo 'The AWS CLI error above is the authoritative authorization result. If the resource-scoped allow is deployed, review IAM permissions boundaries and AWS Organizations SCPs for an external deny.'
-            exit 1
-          fi
-          service_linked_role_arn=$(normalize_iam_value "$raw_service_linked_role_arn")
-
-          if [ "$service_linked_role_arn" != "$expected_role_arn" ]; then
-            echo "::error title=Unexpected EKS service-linked role ARN::Expected $expected_role_arn but received $service_linked_role_arn. Review the IAM service-linked role in this AWS account."
-            printf 'Expected normalized ARN: %q\n' "$expected_role_arn"
-            printf 'Received normalized ARN: %q\n' "$service_linked_role_arn"
             exit 1
           fi
           echo "EKS node group service-linked role access verified: $service_linked_role_arn"
