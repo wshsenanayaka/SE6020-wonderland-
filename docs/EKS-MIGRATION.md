@@ -2,7 +2,7 @@
 
 ## Phase 1: Current implementation
 
-The repository already has a React/Vite frontend, four Node.js services, ECR repositories, RDS MySQL, CloudFront/S3 hosting, ECS Fargate, and GitHub Actions using GitHub OIDC. The Vite application builds to `frontend/dist` and uses same-origin `/api` requests by default. This is compatible with the existing CloudFront API behavior.
+The repository already has a React/Vite frontend, four Node.js services, ECR repositories, RDS MySQL, legacy CloudFront/S3 hosting, ECS Fargate, and GitHub Actions using GitHub OIDC. The Vite application builds to `frontend/dist`; AWS Amplify is the public frontend host and receives the CloudFront origin at build time, allowing the existing frontend helper to route `/api` requests correctly.
 
 This migration adds Kubernetes in parallel. It does not delete ECS, the existing ALB, RDS, S3, CloudFront, ECR repositories, or snapshots.
 
@@ -41,7 +41,7 @@ CI validates Docker builds, Node syntax, available tests, the React build, Cloud
 
 Every successful deployment on `main`, including manual workflow runs, creates or updates `wonderland-eks`, configures `kubectl`, deploys commit-SHA ECR images, waits for rollouts, creates the ALB, health-checks it, promotes CloudFront to EKS, invalidates CloudFront, and checks the public URLs. Failed jobs print CloudFormation and Kubernetes events; they do not delete resources.
 
-Before using that manual workflow, update the existing `wonderland-github-oidc` CloudFormation stack with `infrastructure/github-oidc-role.yaml`. This adds EKS deployment actions to `wonderland-github-actions-deployer` without changing its GitHub OIDC trust policy.
+Before the automated EKS workflow runs, update the existing `wonderland-github-oidc` CloudFormation stack with `infrastructure/github-oidc-role.yaml`. This adds EKS deployment actions to `wonderland-github-actions-deployer` without changing its GitHub OIDC trust policy.
 
 AWS Console: **CloudFormation -> wonderland-github-oidc -> Update -> Replace current template -> Upload template -> Next -> acknowledge IAM changes -> Update stack**. Wait for `UPDATE_COMPLETE`, then push to `main` or run the deployment workflow. The deployment creates billable EKS, EC2, and ALB resources.
 
@@ -49,7 +49,7 @@ AWS Console: **CloudFormation -> wonderland-github-oidc -> Update -> Replace cur
 
 The existing main stack already has a private S3 bucket, CloudFront Origin Access Control, `DefaultRootObject: index.html`, and 403/404 SPA fallbacks. CD builds `frontend/dist`, uploads it, invalidates CloudFront, and prints the `FrontendUrl`. The EKS job verifies that frontend after backend promotion.
 
-CloudFront is the public HTTPS endpoint. For a custom frontend domain, request an ACM certificate in `us-east-1` and attach it to CloudFront. For direct HTTPS access to the EKS ALB, request an ACM certificate in `ap-southeast-1`, add HTTPS listener annotations to `kubernetes/ingress.yaml`, and create a Route 53 alias to the ALB. Do not expose the internal services.
+AWS Amplify is the public HTTPS frontend endpoint. The main branch URL is emitted as `AmplifyFrontendUrl` by the `wonderland-amplify` stack, and it uses the CloudFront `/api` URL. For a custom Amplify domain, configure the domain association in Amplify after DNS validation. Do not expose the internal services or use the EKS ALB as the public frontend host.
 
 ## Phase 6: Verify deployment
 

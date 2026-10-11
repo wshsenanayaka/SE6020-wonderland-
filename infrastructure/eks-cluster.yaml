@@ -147,6 +147,8 @@ Resources:
       Name: !Sub '${ProjectName}-${EnvironmentName}-eks'
       Version: !Ref KubernetesVersion
       RoleArn: !GetAtt EksClusterRole.Arn
+      AccessConfig:
+        AuthenticationMode: API_AND_CONFIG_MAP
       ResourcesVpcConfig:
         EndpointPrivateAccess: true
         EndpointPublicAccess: true

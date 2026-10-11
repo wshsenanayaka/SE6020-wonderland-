@@ -90,7 +90,7 @@ jobs:
         run: pip install cfn-lint
 
       - name: Validate CloudFormation templates
-        run: cfn-lint wonderland-infrastructure.yaml infrastructure/eks-cluster.yaml infrastructure/github-oidc-role.yaml
+        run: cfn-lint wonderland-infrastructure.yaml infrastructure/eks-cluster.yaml infrastructure/amplify-hosting.yaml infrastructure/github-oidc-role.yaml
 
       - name: Validate Kubernetes manifests offline
         run: |

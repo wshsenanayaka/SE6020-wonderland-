@@ -80,6 +80,7 @@ Resources:
                   - eks:DeleteAddon
                   - eks:DescribeAddon
                   - eks:UpdateAddon
+                  - eks:ListAddons
                   - eks:CreatePodIdentityAssociation
                   - eks:DeletePodIdentityAssociation
                   - eks:DescribePodIdentityAssociation
@@ -105,6 +106,31 @@ Resources:
                   - iam:UntagRole
                 Resource:
                   Fn::Sub: 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${ProjectName}-*'
+
+              - Sid: CreateAndDiscoverAmplifyApps
+                Effect: Allow
+                Action:
+                  - amplify:CreateApp
+                  - amplify:ListApps
+                Resource: '*'
+
+              - Sid: ManageWonderlandAmplifyApps
+                Effect: Allow
+                Action:
+                  - amplify:DeleteApp
+                  - amplify:GetApp
+                  - amplify:UpdateApp
+                  - amplify:CreateBranch
+                  - amplify:DeleteBranch
+                  - amplify:GetBranch
+                  - amplify:ListBranches
+                  - amplify:UpdateBranch
+                  - amplify:StartJob
+                  - amplify:GetJob
+                  - amplify:ListJobs
+                  - amplify:TagResource
+                  - amplify:UntagResource
+                Resource: !Sub 'arn:${AWS::Partition}:amplify:${AWS::Region}:${AWS::AccountId}:apps/*'
 
               # Route 53 requires wildcard resources for hosted-zone creation and discovery.
               - Sid: DiscoverAndCreatePrivateHostedZones
@@ -148,7 +174,9 @@ Resources:
                       - elasticloadbalancing.amazonaws.com
                       - rds.amazonaws.com
                       - servicediscovery.amazonaws.com
+                      - eks.amazonaws.com
                       - eks-nodegroup.amazonaws.com
+                      - amplify.amazonaws.com
 
 Outputs:
 

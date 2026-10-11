@@ -7,13 +7,13 @@ This project uses GitHub Actions and AWS CloudFormation to build, validate, prov
 ```text
 GitHub Actions
   |-- CI: install, syntax-check, React build, Docker builds
-  |-- CD: deploy CloudFormation, push containers, publish frontend
+  |-- CD: deploy CloudFormation, push containers, host frontend, deploy Kubernetes
        |
        +--> Amazon ECR: four versioned service images
-       +--> Amazon ECS Fargate: API Gateway, Auth, User, Business services
+       +--> Amazon EKS: API Gateway, Auth, User, Business services on managed EC2 nodes
        +--> Application Load Balancer: routes public API traffic to API Gateway
-       +--> CloudFront: public website and /api/* routing
-       +--> Amazon S3: React production build
+       +--> AWS Amplify: React production build and HTTPS frontend hosting
+       +--> CloudFront: /api/* routing to the EKS load balancer
        +--> Amazon RDS MySQL: private application database
        +--> Secrets Manager: database, Stripe, and SMTP secrets
        +--> CloudWatch Logs: service logs and ECS Container Insights
@@ -26,9 +26,10 @@ The CloudFormation template is [wonderland-infrastructure.yaml](../wonderland-in
 | File | Purpose |
 | --- | --- |
 | `.github/workflows/ci.yml` | Runs for pull requests and pushes. It installs dependencies, checks Node.js syntax, builds the React frontend, and builds all four service images. |
-| `.github/workflows/cd.yml` | Runs only on `main` or manually. It deploys the AWS stack, pushes images to ECR, deploys the React build to S3, restarts ECS services, and invalidates CloudFront. |
+| `.github/workflows/cd.yml` | Runs on `main` or manually. It deploys shared infrastructure, pushes images to ECR, deploys Amplify hosting, deploys EKS workloads, and promotes the CloudFront API origin after health checks. |
 | `infrastructure/github-oidc-role.yaml` | One-time bootstrap template that creates the GitHub Actions OIDC provider and deployment role. |
 | `wonderland-infrastructure.yaml` | Main AWS infrastructure-as-code template. |
+| `infrastructure/amplify-hosting.yaml` | Amplify Hosting app and `main` branch for the React frontend. |
 
 ## One-Time AWS Setup
 
@@ -53,7 +54,7 @@ aws cloudformation deploy `
 | --- | --- |
 | `AWS_DEPLOY_ROLE_ARN` | `DeploymentRoleArn` from the bootstrap stack. |
 
-5. Push a commit to `main`. The first CD run creates the AWS infrastructure and ECR repositories, publishes the images, then starts the ECS services.
+5. Create the `wonderland/production/amplify-github-token` AWS Secrets Manager secret with JSON key `token`, then push a commit to `main`. The CD run creates shared infrastructure and ECR repositories, pushes the images, deploys Amplify, then deploys EKS workloads.
 
 The workflow uses short-lived GitHub OIDC credentials. Do not add AWS access keys or database passwords to GitHub secrets. The first deployment creates a 32-character database password inside AWS Secrets Manager.
 

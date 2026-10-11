@@ -1,0 +1,87 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Wonderland React frontend hosting through AWS Amplify and the GitHub App.
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: wonderland
+    AllowedPattern: '^[a-z][a-z0-9-]{2,30}$'
+  EnvironmentName:
+    Type: String
+    Default: production
+    AllowedPattern: '^[a-z][a-z0-9-]{2,30}$'
+  GitHubRepositoryUrl:
+    Type: String
+    Default: https://github.com/wshsenanayaka/SE6020-wonderland-
+    AllowedPattern: '^https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/?$'
+  GitHubBranch:
+    Type: String
+    Default: main
+    AllowedPattern: '^[A-Za-z0-9._/-]+$'
+  GitHubAccessTokenSecretName:
+    Type: String
+    Default: wonderland/production/amplify-github-token
+    AllowedPattern: '^[A-Za-z0-9/_+=.@-]+$'
+    Description: Secrets Manager secret name containing JSON key token for the Amplify GitHub App connection.
+  ApiGatewayBaseUrl:
+    Type: String
+    AllowedPattern: '^https://[^/]+$'
+    Description: Public CloudFront origin embedded into the Vite build as VITE_API_BASE_URL.
+
+Resources:
+  AmplifyApp:
+    Type: AWS::Amplify::App
+    Properties:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-frontend'
+      Description: Wonderland React frontend hosted by AWS Amplify.
+      Platform: WEB
+      Repository: !Ref GitHubRepositoryUrl
+      AccessToken: !Sub '{{resolve:secretsmanager:${GitHubAccessTokenSecretName}:SecretString:token}}'
+      EnableBranchAutoDeletion: false
+      EnvironmentVariables:
+        - Name: VITE_API_BASE_URL
+          Value: !Ref ApiGatewayBaseUrl
+      BuildSpec: |
+        version: 1
+        applications:
+          - appRoot: frontend
+            frontend:
+              phases:
+                preBuild:
+                  commands:
+                    - npm ci
+                build:
+                  commands:
+                    - npm run build
+              artifacts:
+                baseDirectory: dist
+                files:
+                  - '**/*'
+              cache:
+                paths:
+                  - node_modules/**/*
+      CustomRules:
+        - Source: </^[^.]+$|\\.(?!(css|gif|ico|jpg|js|png|txt|svg|woff|woff2|ttf|map)$)([^.]+$)/>
+          Target: /index.html
+          Status: '200'
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref EnvironmentName
+
+  AmplifyMainBranch:
+    Type: AWS::Amplify::Branch
+    Properties:
+      AppId: !GetAtt AmplifyApp.AppId
+      BranchName: !Ref GitHubBranch
+      EnableAutoBuild: true
+      Stage: PRODUCTION
+
+Outputs:
+  AmplifyAppId:
+    Description: Amplify application identifier.
+    Value: !GetAtt AmplifyApp.AppId
+  AmplifyFrontendUrl:
+    Description: Public HTTPS URL for the main Amplify branch.
+    Value: !Sub 'https://${GitHubBranch}.${AmplifyApp.DefaultDomain}'
