@@ -494,6 +494,7 @@ jobs:
             --stack-name "$EKS_STACK_NAME" \
             --template-file infrastructure/eks-cluster.yaml \
             --capabilities CAPABILITY_NAMED_IAM \
+            --disable-rollback \
             --parameter-overrides \
               ProjectName="$PROJECT_NAME" \
               EnvironmentName="$ENVIRONMENT_NAME" \
