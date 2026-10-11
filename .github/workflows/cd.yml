@@ -281,14 +281,43 @@ jobs:
             --stack-name "$AMPLIFY_STACK_NAME" \
             --query "Stacks[0].Outputs[?OutputKey=='AmplifyAppId'].OutputValue" \
             --output text)
-          aws amplify start-job --app-id "$amplify_app_id" --branch-name main --job-type RELEASE --no-cli-pager >/dev/null
+          if [ -z "$amplify_app_id" ] || [ "$amplify_app_id" = "None" ]; then
+            echo "::error title=Amplify application is unavailable::$AMPLIFY_STACK_NAME did not publish AmplifyAppId."
+            exit 1
+          fi
 
-          for attempt in {1..60}; do
-            job_status=$(aws amplify list-jobs \
+          amplify_job_id=$(aws amplify start-job \
+            --app-id "$amplify_app_id" \
+            --branch-name main \
+            --job-type RELEASE \
+            --query 'jobSummary.jobId' \
+            --output text \
+            --no-cli-pager)
+          if [ -z "$amplify_job_id" ] || [ "$amplify_job_id" = "None" ]; then
+            echo "::error title=Amplify build was not started::Amplify did not return a build job ID for $amplify_app_id."
+            exit 1
+          fi
+
+          report_amplify_job() {
+            aws amplify get-job \
               --app-id "$amplify_app_id" \
               --branch-name main \
-              --max-results 1 \
-              --query 'jobSummaries[0].status' \
+              --job-id "$amplify_job_id" \
+              --output json \
+              --no-cli-pager > amplify-job.json
+            jq -r '
+              "Amplify job status: \(.job.summary.status)",
+              "Amplify job reason: \(.job.summary.statusReason // \"No status reason supplied.\")",
+              (.job.steps[]? | "\(.stepName): \(.status)\n  \(.logUrl // \"No log URL supplied.\")")
+            ' amplify-job.json
+          }
+
+          for attempt in {1..60}; do
+            job_status=$(aws amplify get-job \
+              --app-id "$amplify_app_id" \
+              --branch-name main \
+              --job-id "$amplify_job_id" \
+              --query 'job.summary.status' \
               --output text)
             case "$job_status" in
               SUCCEED)
@@ -300,14 +329,16 @@ jobs:
                 exit 0
                 ;;
               FAILED|CANCELLED)
-                echo "::error title=Amplify frontend build failed::Check the Amplify job logs for $amplify_app_id."
+                report_amplify_job
+                echo "::error title=Amplify frontend build failed::Amplify job $amplify_job_id failed. The step log URLs are listed above."
                 exit 1
                 ;;
               *) sleep 15 ;;
             esac
           done
 
-          echo '::error title=Amplify frontend build timed out::No successful Amplify build completed within 15 minutes.'
+          report_amplify_job
+          echo '::error title=Amplify frontend build timed out::No successful Amplify build completed within 15 minutes. The latest job details are listed above.'
           exit 1
 
   deploy-eks:

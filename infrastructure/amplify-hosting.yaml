@@ -39,6 +39,8 @@ Resources:
       AccessToken: !Sub '{{resolve:secretsmanager:${GitHubAccessTokenSecretName}:SecretString:token}}'
       EnableBranchAutoDeletion: false
       EnvironmentVariables:
+        - Name: AMPLIFY_MONOREPO_APP_ROOT
+          Value: frontend
         - Name: VITE_API_BASE_URL
           Value: !Ref ApiGatewayBaseUrl
       BuildSpec: |
@@ -49,10 +51,16 @@ Resources:
               phases:
                 preBuild:
                   commands:
+                    - nvm use 20
+                    - node --version
+                    - npm --version
+                    - test -n "$VITE_API_BASE_URL"
+                    - echo "Building the Vite frontend against $VITE_API_BASE_URL"
                     - npm ci
                 build:
                   commands:
                     - npm run build
+                    - test -f dist/index.html
               artifacts:
                 baseDirectory: dist
                 files:
