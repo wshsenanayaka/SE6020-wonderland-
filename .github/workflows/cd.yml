@@ -290,25 +290,42 @@ jobs:
             exit 1
           fi
 
-          configured_service_role=$(aws amplify get-app \
+          # Static Vite hosting uses WEB, not Amplify backend or SSR compute roles.
+          # Explicit empty values clear stale settings left by an earlier app update.
+          aws amplify update-app \
             --app-id "$amplify_app_id" \
-            --query 'app.iamServiceRoleArn' \
-            --output text \
-            --no-cli-pager)
-          if [ -n "$configured_service_role" ] && [ "$configured_service_role" != "None" ]; then
-            echo "Clearing the stale Amplify service role from static WEB app: $configured_service_role"
-            aws amplify update-app \
+            --platform WEB \
+            --iam-service-role-arn "" \
+            --compute-role-arn "" \
+            --no-cli-pager >/dev/null
+
+          app_platform=""
+          configured_service_role=""
+          configured_compute_role=""
+          stable_configuration_reads=0
+          for attempt in $(seq 1 12); do
+            read -r app_platform configured_service_role configured_compute_role < <(aws amplify get-app \
               --app-id "$amplify_app_id" \
-              --iam-service-role-arn "" \
-              --no-cli-pager >/dev/null
-            configured_service_role=$(aws amplify get-app \
-              --app-id "$amplify_app_id" \
-              --query 'app.iamServiceRoleArn' \
+              --query 'app.[platform, iamServiceRoleArn, computeRoleArn]' \
               --output text \
               --no-cli-pager)
-          fi
-          if [ -n "$configured_service_role" ] && [ "$configured_service_role" != "None" ]; then
-            echo "::error title=Amplify service role remains configured::Expected no IAM service role for static WEB app, but found $configured_service_role after attempting to clear it."
+            if [ "$app_platform" = "WEB" ] \
+              && { [ -z "$configured_service_role" ] || [ "$configured_service_role" = "None" ]; } \
+              && { [ -z "$configured_compute_role" ] || [ "$configured_compute_role" = "None" ]; }; then
+              stable_configuration_reads=$((stable_configuration_reads + 1))
+              if [ "$stable_configuration_reads" -ge 3 ]; then
+                break
+              fi
+            else
+              stable_configuration_reads=0
+            fi
+            sleep 5
+          done
+          if [ "$stable_configuration_reads" -lt 3 ] \
+            || [ "$app_platform" != "WEB" ] \
+            || { [ -n "$configured_service_role" ] && [ "$configured_service_role" != "None" ]; } \
+            || { [ -n "$configured_compute_role" ] && [ "$configured_compute_role" != "None" ]; }; then
+            echo "::error title=Amplify role configuration remains stale::Expected three consecutive reads of platform WEB without IAM or compute roles. Found platform=$app_platform, iamServiceRoleArn=$configured_service_role, computeRoleArn=$configured_compute_role."
             exit 1
           fi
 

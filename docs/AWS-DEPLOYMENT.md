@@ -31,7 +31,7 @@ The Amplify stack resolves this value directly from Secrets Manager. It is not p
 
 The workflow fails rather than reporting success when the Amplify GitHub token secret, Amplify build, EKS node group, Kubernetes rollout, or endpoint health check fails.
 
-The Amplify app is a static Vite `WEB` application. It has no Amplify backend or SSR compute resources, so CloudFormation does not configure `IAMServiceRole` or `ComputeRoleArn`. If a previous deployment left a service-role ARN on the existing app, the workflow clears that optional association in place, reads it back, and only then starts the build. This prevents a stale IAM role association from causing `Unable to assume specified IAM Role`.
+The Amplify app is a static Vite `WEB` application. It has no Amplify backend or SSR compute resources, so CloudFormation does not configure `IAMServiceRole` or `ComputeRoleArn`. Before every build, the workflow explicitly sets `WEB`, clears both optional role associations, and requires three consecutive role-free configuration reads before starting the build. This prevents a stale IAM role association from causing `Unable to assume specified IAM Role`.
 
 ## Frontend and API URLs
 
@@ -87,7 +87,7 @@ Expected values are `UPDATE_COMPLETE` or `CREATE_COMPLETE` for the stacks, `ACTI
 | `iam:ListAttachedRolePolicies` denied | Update `wonderland-github-oidc` with the current OIDC role template, wait for `UPDATE_COMPLETE`, then rerun CD. |
 | EKS stack is `ROLLBACK_COMPLETE` or `ROLLBACK_FAILED` | Read CloudFormation Events, resolve the specific retained resource or permission issue, then recover or manually delete only the failed EKS stack. Never delete the database stack automatically. |
 | Amplify token secret missing | Create the specified Secrets Manager secret with JSON key `token`, then rerun CD. |
-| Amplify cannot assume an IAM role | Confirm the app platform is `WEB`, then rerun CD. It clears a stale service role in place and verifies the result before starting the build. If the verification still fails, remove the role in Amplify **App settings** -> **General**, then rerun CD. |
+| Amplify cannot assume an IAM role | Confirm the app platform is `WEB`, then rerun CD. It clears stale service and compute roles in place and verifies the result before starting the build. If the verification still fails, remove both role values in Amplify **App settings** -> **General**, save, then rerun CD. |
 | Pods are not Ready | Read `kubectl get events -n wonderland --sort-by=.lastTimestamp` and `kubectl logs deployment/<service> -n wonderland`. |
 | Amplify URL cannot call the API | Confirm the EKS ConfigMap has the Amplify URL in `FRONTEND_ORIGIN`, then restart the affected deployment. |
 
