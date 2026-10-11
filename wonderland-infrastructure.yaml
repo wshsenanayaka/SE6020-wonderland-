@@ -833,6 +833,9 @@ Outputs:
   FrontendUrl:
     Description: Public URL for the Wonderland website.
     Value: !Sub 'https://${CloudFrontDistribution.DomainName}'
+  ApiOriginUrl:
+    Description: Public CloudFront origin used by the React application before it appends API paths.
+    Value: !Sub 'https://${CloudFrontDistribution.DomainName}'
   ApiUrl:
     Description: Public API endpoint through CloudFront.
     Value: !Sub 'https://${CloudFrontDistribution.DomainName}/api'

@@ -203,11 +203,16 @@ jobs:
             --stack-name "$STACK_NAME" \
             --query "Stacks[0].Outputs[?OutputKey=='FrontendUrl'].OutputValue" \
             --output text)
-          api_gateway_base_url=$(aws cloudformation describe-stacks \
+          api_origin_url=$(aws cloudformation describe-stacks \
             --stack-name "$STACK_NAME" \
-            --query "Stacks[0].Outputs[?OutputKey=='FrontendUrl'].OutputValue" \
+            --query "Stacks[0].Outputs[?OutputKey=='ApiOriginUrl'].OutputValue" \
+            --output text)
+          api_url=$(aws cloudformation describe-stacks \
+            --stack-name "$STACK_NAME" \
+            --query "Stacks[0].Outputs[?OutputKey=='ApiUrl'].OutputValue" \
             --output text)
           echo "Frontend: $frontend_url"
+          echo "API origin: $api_origin_url"
           echo "API: $api_url"
 
   deploy-amplify:
@@ -236,10 +241,31 @@ jobs:
               exit 1
             }
 
+          api_gateway_base_url=$(aws cloudformation describe-stacks \
+            --stack-name "$STACK_NAME" \
+            --query "Stacks[0].Outputs[?OutputKey=='ApiOriginUrl'].OutputValue" \
+            --output text)
+
           api_url=$(aws cloudformation describe-stacks \
             --stack-name "$STACK_NAME" \
             --query "Stacks[0].Outputs[?OutputKey=='ApiUrl'].OutputValue" \
             --output text)
+
+          if [ -z "$api_gateway_base_url" ] || [ "$api_gateway_base_url" = "None" ]; then
+            echo "::error title=API origin is unavailable::$STACK_NAME does not publish ApiOriginUrl. Deploy the application stack successfully before deploying Amplify."
+            exit 1
+          fi
+          if ! [[ "$api_gateway_base_url" =~ ^https://[^/]+$ ]]; then
+            echo "::error title=API origin is invalid::ApiOriginUrl must be an HTTPS origin without a path; received an invalid stack output."
+            exit 1
+          fi
+          if [ -z "$api_url" ] || [ "$api_url" = "None" ] || ! [[ "$api_url" =~ ^https://[^/]+/api$ ]]; then
+            echo "::error title=API endpoint is unavailable::$STACK_NAME must publish a valid public ApiUrl ending in /api before deploying Amplify."
+            exit 1
+          fi
+
+          echo "Using public API origin $api_gateway_base_url for the Amplify frontend build."
+          echo "The frontend will send API requests to $api_url."
 
           aws cloudformation deploy \
             --stack-name "$AMPLIFY_STACK_NAME" \
