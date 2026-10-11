@@ -95,6 +95,7 @@ Resources:
                   - iam:CreateRole
                   - iam:DeleteRole
                   - iam:GetRole
+                  - iam:ListAttachedRolePolicies
                   - iam:PassRole
                   - iam:AttachRolePolicy
                   - iam:DetachRolePolicy
@@ -147,6 +148,7 @@ Resources:
                       - elasticloadbalancing.amazonaws.com
                       - rds.amazonaws.com
                       - servicediscovery.amazonaws.com
+                      - eks-nodegroup.amazonaws.com
 
 Outputs:
 
