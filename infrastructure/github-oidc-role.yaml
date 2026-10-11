@@ -109,6 +109,13 @@ Resources:
                 Resource:
                   Fn::Sub: 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${ProjectName}-*'
 
+              # EKS creates this AWS-managed service-linked role for managed node groups.
+              # The deployment role only needs to inspect the exact role when it already exists.
+              - Sid: ReadEksNodegroupServiceLinkedRole
+                Effect: Allow
+                Action: iam:GetRole
+                Resource: !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/aws-service-role/eks-nodegroup.amazonaws.com/AWSServiceRoleForAmazonEKSNodegroup'
+
               - Sid: PassWonderlandRuntimeRoles
                 Effect: Allow
                 Action: iam:PassRole

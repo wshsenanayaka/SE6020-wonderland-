@@ -459,6 +459,22 @@ jobs:
               --output text
           }
 
+          report_eks_stack_failure() {
+            echo 'Failed EKS CloudFormation resources:'
+            aws cloudformation describe-stack-events \
+              --stack-name "$EKS_STACK_NAME" \
+              --query "StackEvents[?ResourceStatus=='CREATE_FAILED' || ResourceStatus=='UPDATE_FAILED' || ResourceStatus=='DELETE_FAILED' || ResourceStatus=='ROLLBACK_FAILED' || ResourceStatus=='UPDATE_ROLLBACK_FAILED'].[Timestamp,LogicalResourceId,ResourceType,ResourceStatus,ResourceStatusReason]" \
+              --output table \
+              --no-cli-pager || true
+
+            echo 'Most recent EKS CloudFormation events:'
+            aws cloudformation describe-stack-events \
+              --stack-name "$EKS_STACK_NAME" \
+              --query 'StackEvents[0:25].[Timestamp,LogicalResourceId,ResourceStatus,ResourceStatusReason]' \
+              --output table \
+              --no-cli-pager || true
+          }
+
           if aws cloudformation describe-stacks --stack-name "$EKS_STACK_NAME" >/dev/null 2>&1; then
             eks_status=$(aws cloudformation describe-stacks \
               --stack-name "$EKS_STACK_NAME" \
@@ -468,12 +484,13 @@ jobs:
               CREATE_COMPLETE|UPDATE_COMPLETE|UPDATE_ROLLBACK_COMPLETE|IMPORT_COMPLETE) ;;
               *)
                 echo "::error title=EKS stack requires manual recovery::$EKS_STACK_NAME is $eks_status. Review CloudFormation Events; this workflow will not delete or recreate resources."
+                report_eks_stack_failure
                 exit 1
                 ;;
             esac
           fi
 
-          aws cloudformation deploy \
+          if ! aws cloudformation deploy \
             --stack-name "$EKS_STACK_NAME" \
             --template-file infrastructure/eks-cluster.yaml \
             --capabilities CAPABILITY_NAMED_IAM \
@@ -485,7 +502,11 @@ jobs:
               ExistingPublicSubnetTwoId="$(get_output PublicSubnetTwoId)" \
               ExistingPrivateSubnetOneId="$(get_output PrivateSubnetOneId)" \
               ExistingPrivateSubnetTwoId="$(get_output PrivateSubnetTwoId)" \
-              ExistingDatabaseSecurityGroupId="$(get_output DatabaseSecurityGroupId)"
+              ExistingDatabaseSecurityGroupId="$(get_output DatabaseSecurityGroupId)"; then
+            echo '::error title=EKS CloudFormation deployment failed::See the failed resource events below for the AWS failure reason.'
+            report_eks_stack_failure
+            exit 1
+          fi
 
           eks_cluster="$PROJECT_NAME-$ENVIRONMENT_NAME-eks"
           aws eks wait cluster-active --region "$AWS_REGION" --name "$eks_cluster"
