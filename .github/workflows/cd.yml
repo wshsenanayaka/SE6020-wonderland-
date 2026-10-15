@@ -597,6 +597,13 @@ jobs:
             --output text)
           test -n "$frontend_url"
           test "$frontend_url" != "None"
+          case "$frontend_url" in
+            https://*) ;;
+            *)
+              echo "::error title=Invalid Amplify frontend URL::Expected an HTTPS AmplifyFrontendUrl output, received '$frontend_url'."
+              exit 1
+              ;;
+          esac
           stripe_success_url="$frontend_url/payment-success?session_id={CHECKOUT_SESSION_ID}"
           stripe_cancel_url="$frontend_url/payment-cancel"
           database_endpoint=$(get_output DatabaseEndpoint)
@@ -606,6 +613,15 @@ jobs:
           account_id=$(aws sts get-caller-identity --query Account --output text)
           ecr_registry="$account_id.dkr.ecr.$AWS_REGION.amazonaws.com"
           secret_json=$(aws secretsmanager get-secret-value --secret-id "$application_secret_arn" --query SecretString --output text)
+          stripe_secret_key=$(jq -r '.STRIPE_SECRET_KEY // ""' <<<"$secret_json")
+
+          if [ -z "$stripe_secret_key" ]; then
+            echo "::error title=Stripe is not configured::Add STRIPE_SECRET_KEY to the application secret in AWS Secrets Manager, then rerun this workflow."
+            exit 1
+          fi
+
+          echo "Stripe Checkout success URL: $stripe_success_url"
+          echo "Stripe Checkout cancel URL: $stripe_cancel_url"
 
           kubectl apply -f kubernetes/namespace.yaml
           sed \
@@ -635,6 +651,7 @@ jobs:
               -e "s|__IMAGE_TAG__|$GITHUB_SHA|g" \
               "$manifest" | kubectl apply -f -
           done
+          kubectl rollout restart deployment/business-service -n wonderland
           for deployment in api-gateway auth-service user-service business-service; do
             kubectl rollout status "deployment/$deployment" -n wonderland --timeout=5m
           done

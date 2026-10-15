@@ -278,7 +278,7 @@ export default function Dashboard() {
               <h1>{isAdmin ? 'Park Operations Overview' : `Welcome, ${profile.name}`}</h1>
               <p>
                 {isAdmin
-                  ? 'Monitor visitor behaviour, park activity, attraction availability, and bookings from one React dashboard.'
+                  ? 'Monitor visitor activity, attraction availability, bookings, and park operations in one place.'
                   : 'Review your visitor profile, booking access, and today’s park highlights.'}
               </p>
             </section>

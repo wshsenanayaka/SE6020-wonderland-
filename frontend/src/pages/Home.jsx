@@ -145,11 +145,11 @@ function Hero({ stats }) {
     <section className="hero" id="top">
       <div className="hero-shade" />
       <div className="hero-content">
-        <span className="eyebrow">Cloud Native Theme Park Platform</span>
+        <span className="eyebrow">Your Day of Adventure Starts Here</span>
         <h1>Create Memories. Experience Wonderland.</h1>
         <p>
-          A React visitor interface connected to Node.js microservices for attraction discovery,
-          visitor profiles, ticket booking, and park operations visibility.
+          Discover exciting attractions, choose the perfect ticket, and plan a day full of fun
+          for everyone at Wonderland.
         </p>
         <div className="hero-actions">
           <a className="primary-btn" href="#attractions">Explore Attractions</a>
@@ -173,7 +173,7 @@ function Attractions({ attractions, activeCategory, onCategoryChange }) {
     <section className="section" id="attractions">
       <span className="section-kicker">Explore Wonderland</span>
       <h2>Find Your Next Adventure</h2>
-      <p className="section-copy">Activities are loaded from the Node.js backend and can be managed by administrators.</p>
+      <p className="section-copy">Browse thrilling rides, family favourites, and memorable experiences for every visitor.</p>
       <div className="filter-bar">
         {categories.map((category) => (
           <button
@@ -240,7 +240,7 @@ function ParkStatus({ operations, behaviourMix }) {
     <section className="status-section" id="status">
       <span className="section-kicker">Live Park Information</span>
       <h2>Wonderland Today</h2>
-      <p className="section-copy">Dashboards and reports are supplied through Node.js APIs for visualization.</p>
+      <p className="section-copy">Check today’s park updates, attraction availability, and visitor information before you arrive.</p>
       <div className="metric-grid">
         {operations.map((metric) => (
           <article key={metric.label}>

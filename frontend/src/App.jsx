@@ -18,7 +18,7 @@ export default function App() {
     return (
       <main className="loading-screen">
         <strong>Wonderland</strong>
-        <span>{error || 'Loading React frontend...'}</span>
+        <span>{error || 'Preparing your Wonderland experience...'}</span>
       </main>
     );
   }

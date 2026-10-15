@@ -53,6 +53,25 @@ aws cloudformation describe-stacks `
 
 Amplify receives the CloudFront origin as `VITE_API_BASE_URL` at build time; the existing frontend helper appends `/api` to requests. EKS receives the Amplify URL as `FRONTEND_ORIGIN`, plus the corresponding Stripe success and cancel URLs, through its generated ConfigMap.
 
+## Stripe Checkout Setup
+
+Wonderland uses Stripe-hosted Checkout. Stripe creates a unique payment URL for each booking; there is no fixed Stripe payment URL to configure in the Stripe Dashboard. The application supplies its redirect URLs when it creates each Checkout Session:
+
+```text
+https://<AmplifyFrontendUrl>/payment-success?session_id={CHECKOUT_SESSION_ID}
+https://<AmplifyFrontendUrl>/payment-cancel
+```
+
+`AmplifyFrontendUrl` is read from the `wonderland-amplify` CloudFormation stack during CD, so the redirects automatically follow the currently deployed Amplify domain.
+
+For test payments, complete this one-time setup:
+
+1. In Stripe Dashboard, enable **Test mode**, then open **Developers > API keys** and copy the secret key beginning with `sk_test_`.
+2. In AWS Secrets Manager, open the secret returned by the `ApplicationSecretsArn` output of the `wonderland-production` stack. Add or update the JSON field `STRIPE_SECRET_KEY` with that Stripe secret key. Preserve every existing field, especially `DB_PASSWORD`.
+3. Rerun the CD workflow. It verifies that the key is present, applies it to the Kubernetes Secret without logging it, and restarts only `business-service` so the process receives the new value.
+
+Use a live key only after your Stripe account is activated and the payment flow has been tested. Never add a Stripe secret key to GitHub secrets, CloudFormation parameters, source files, workflow logs, or frontend environment variables.
+
 ## Verification
 
 ```powershell
