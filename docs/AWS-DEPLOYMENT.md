@@ -2,11 +2,11 @@
 
 ## Scope and architecture
 
-This deployment keeps the completed React and Node.js application unchanged. CloudFormation provisions the shared `wonderland-production` stack (VPC, public/private subnets, ECR, private RDS MySQL, Secrets Manager, legacy S3/CloudFront, and rollback ECS resources), `wonderland-eks` (EKS and managed EC2 nodes), and `wonderland-amplify` (the public React frontend).
+CloudFormation provisions the shared `wonderland-production` stack (VPC, public/private subnets, ECR, private RDS MySQL, Secrets Manager, legacy S3/CloudFront, and rollback ECS resources), `wonderland-eks` (EKS and managed EC2 nodes), `wonderland-amplify` (the public React frontend), and `wonderland-cognito` (visitor and administrator authentication).
 
 The live backend is EKS: the AWS Load Balancer Controller exposes only `api-gateway`; the auth, user, and business services remain internal ClusterIP services. CloudFront routes `/api/*` to the EKS ALB after its health check. ECS is retained as a rollback path and is not deleted automatically.
 
-Cognito is not provisioned. The completed application uses its existing Node.js visitor and administrator authentication flow; adding Cognito would require changing the application's authentication contracts and is outside this infrastructure-only deployment.
+Cognito owns user credentials and email confirmation. The React application holds the short-lived Cognito access token in browser session storage, and the API gateway validates it with Cognito before internal services receive trusted profile data. Existing bookings and visitor profiles remain in RDS.
 
 ## Prerequisites
 
@@ -71,6 +71,31 @@ For test payments, complete this one-time setup:
 3. Rerun the CD workflow. It verifies that the key is present, applies it to the Kubernetes Secret without logging it, and restarts only `business-service` so the process receives the new value.
 
 Use a live key only after your Stripe account is activated and the payment flow has been tested. Never add a Stripe secret key to GitHub secrets, CloudFormation parameters, source files, workflow logs, or frontend environment variables.
+
+## Cognito Authentication
+
+The `wonderland-cognito` stack creates a Cognito User Pool, a public web app client, and the `Visitors` and `Administrators` groups. The React application sends Cognito access tokens to the API gateway. The gateway validates each token with Cognito before it supplies trusted visitor information to the internal services.
+
+Before the first Cognito deployment, an AWS administrator must update the IAM bootstrap stack because GitHub Actions must not grant its own new permissions:
+
+```powershell
+aws cloudformation deploy `
+  --stack-name wonderland-github-oidc `
+  --template-file infrastructure/github-oidc-role.yaml `
+  --capabilities CAPABILITY_NAMED_IAM `
+  --region ap-southeast-1
+```
+
+After that one-time update, pushing to `main` creates or updates `wonderland-cognito`, builds the Amplify frontend with its public Cognito identifiers, and configures EKS services.
+
+Visitors create their own account from the Wonderland registration page and confirm their email code. Create administrators with an administrator AWS session, then add them to the Cognito group:
+
+```powershell
+$poolId = aws cloudformation describe-stacks --region ap-southeast-1 --stack-name wonderland-cognito --query "Stacks[0].Outputs[?OutputKey=='CognitoUserPoolId'].OutputValue" --output text
+aws cognito-idp admin-add-user-to-group --region ap-southeast-1 --user-pool-id $poolId --username admin@example.com --group-name Administrators
+```
+
+The Cognito user must already exist and be confirmed before it can be added to the group. Do not put administrator group membership, access tokens, or Cognito passwords in GitHub secrets or frontend source files.
 
 ## Verification
 

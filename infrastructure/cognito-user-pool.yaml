@@ -1,0 +1,107 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Wonderland Amazon Cognito User Pool for visitor and administrator authentication.
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: wonderland
+    AllowedPattern: '^[a-z][a-z0-9-]{2,30}$'
+  EnvironmentName:
+    Type: String
+    Default: production
+    AllowedPattern: '^[a-z][a-z0-9-]{2,30}$'
+
+Resources:
+  WonderlandUserPool:
+    Type: AWS::Cognito::UserPool
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      UserPoolName: !Sub '${ProjectName}-${EnvironmentName}-users'
+      UsernameAttributes:
+        - email
+      AutoVerifiedAttributes:
+        - email
+      UsernameConfiguration:
+        CaseSensitive: false
+      MfaConfiguration: 'OFF'
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - Name: verified_email
+            Priority: 1
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireLowercase: false
+          RequireNumbers: false
+          RequireSymbols: false
+          RequireUppercase: false
+          TemporaryPasswordValidityDays: 7
+      Schema:
+        - Name: name
+          AttributeDataType: String
+          Mutable: true
+          Required: true
+          StringAttributeConstraints:
+            MinLength: '1'
+            MaxLength: '120'
+        - Name: contact_number
+          AttributeDataType: String
+          Mutable: true
+          Required: false
+          StringAttributeConstraints:
+            MaxLength: '30'
+      UserPoolTags:
+        Project: !Ref ProjectName
+        Environment: !Ref EnvironmentName
+
+  WonderlandUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      UserPoolId: !Ref WonderlandUserPool
+      ClientName: !Sub '${ProjectName}-${EnvironmentName}-web'
+      GenerateSecret: false
+      PreventUserExistenceErrors: ENABLED
+      ExplicitAuthFlows:
+        - ALLOW_USER_PASSWORD_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+      AccessTokenValidity: 60
+      IdTokenValidity: 60
+      RefreshTokenValidity: 1
+      TokenValidityUnits:
+        AccessToken: minutes
+        IdToken: minutes
+        RefreshToken: days
+      ReadAttributes:
+        - email
+        - name
+        - custom:contact_number
+      WriteAttributes:
+        - email
+        - name
+        - custom:contact_number
+
+  VisitorsGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      GroupName: Visitors
+      Description: Wonderland visitors who can manage their own bookings and profiles.
+      UserPoolId: !Ref WonderlandUserPool
+
+  AdministratorsGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      GroupName: Administrators
+      Description: Wonderland park administrators.
+      UserPoolId: !Ref WonderlandUserPool
+
+Outputs:
+  CognitoUserPoolId:
+    Description: Amazon Cognito User Pool identifier.
+    Value: !Ref WonderlandUserPool
+  CognitoUserPoolClientId:
+    Description: Public web application client identifier.
+    Value: !Ref WonderlandUserPoolClient
+  CognitoRegion:
+    Description: Region containing the Cognito User Pool.
+    Value: !Ref AWS::Region

@@ -27,6 +27,14 @@ Parameters:
     Type: String
     AllowedPattern: '^https://[^/]+$'
     Description: Public CloudFront origin embedded into the Vite build as VITE_API_BASE_URL.
+  CognitoUserPoolId:
+    Type: String
+    AllowedPattern: '^[a-z0-9-]+_[A-Za-z0-9]+$'
+    Description: Amazon Cognito User Pool identifier embedded into the Vite build.
+  CognitoUserPoolClientId:
+    Type: String
+    AllowedPattern: '^[A-Za-z0-9]+$'
+    Description: Public Amazon Cognito application client identifier embedded into the Vite build.
 
 Resources:
   AmplifyApp:
@@ -44,6 +52,12 @@ Resources:
           Value: frontend
         - Name: VITE_API_BASE_URL
           Value: !Ref ApiGatewayBaseUrl
+        - Name: VITE_COGNITO_USER_POOL_ID
+          Value: !Ref CognitoUserPoolId
+        - Name: VITE_COGNITO_USER_POOL_CLIENT_ID
+          Value: !Ref CognitoUserPoolClientId
+        - Name: VITE_COGNITO_REGION
+          Value: !Ref AWS::Region
       BuildSpec: |
         version: 1
         applications:

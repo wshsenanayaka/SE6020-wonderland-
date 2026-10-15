@@ -14,6 +14,17 @@ app.use(cors({
   credentials: true,
 }));
 
+app.use((request, response, next) => {
+  authenticateCognitoRequest(request)
+    .then(() => next())
+    .catch((error) => {
+      response.status(error.statusCode || 401).json({
+        success: false,
+        message: error.message || 'Cognito authentication is required.',
+      });
+    });
+});
+
 const assetsDir = path.isAbsolute(config.assetsDir)
   ? config.assetsDir
   : path.resolve(__dirname, '../../..', config.assetsDir);
@@ -118,4 +129,108 @@ function shouldSkipHeader(headerName) {
     'upgrade',
     'host',
   ].includes(headerName.toLowerCase());
+}
+
+async function authenticateCognitoRequest(request) {
+  if (!isCognitoEnabled() || request.method === 'OPTIONS') {
+    return;
+  }
+
+  // Cognito mode never forwards browser-provided profile cookies to services.
+  request.headers.cookie = '';
+  const accessToken = bearerToken(request.headers.authorization);
+  if (!accessToken) {
+    if (requiresCognitoAuthentication(request.path)) {
+      throw authorizationError('Cognito login is required.');
+    }
+    return;
+  }
+
+  const profile = await cognitoProfile(accessToken);
+  request.headers.cookie = profileCookieHeader(profile);
+}
+
+function isCognitoEnabled() {
+  return Boolean(config.cognitoUserPoolId && config.cognitoUserPoolClientId && config.cognitoRegion);
+}
+
+function requiresCognitoAuthentication(pathname) {
+  if (pathname === '/api/platform-data' || pathname === '/health' || pathname.startsWith('/assets/')) {
+    return false;
+  }
+  if (pathname === '/api/auth/login' || pathname === '/api/auth/register' || pathname === '/api/auth/confirm-registration') {
+    return false;
+  }
+  if (/^\/api\/business\/bookings\/[^/]+\/check-in$/.test(pathname)) {
+    return false;
+  }
+  return pathname.startsWith('/api/users') || pathname.startsWith('/api/business');
+}
+
+function bearerToken(authorization) {
+  const match = /^Bearer\s+(.+)$/i.exec(String(authorization || ''));
+  return match ? match[1].trim() : '';
+}
+
+async function cognitoProfile(accessToken) {
+  const cognitoResponse = await fetch(`https://cognito-idp.${config.cognitoRegion}.amazonaws.com/`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-amz-json-1.1',
+      'X-Amz-Target': 'AWSCognitoIdentityProviderService.GetUser',
+    },
+    body: JSON.stringify({ AccessToken: accessToken }),
+  });
+  const user = await cognitoResponse.json().catch(() => ({}));
+  if (!cognitoResponse.ok) {
+    throw authorizationError(user.message || 'Cognito access token is invalid or expired.');
+  }
+
+  // GetUser verifies the exact access token with Cognito before these claims are used.
+  const claims = parseVerifiedAccessTokenClaims(accessToken);
+  const attributes = Object.fromEntries((user.UserAttributes || []).map(({ Name, Value }) => [Name, Value]));
+  const groups = Array.isArray(claims['cognito:groups']) ? claims['cognito:groups'] : [];
+  const type = groups.includes('Administrators') ? 'admin' : 'visitor';
+
+  return {
+    name: attributes.name || attributes.email || user.Username,
+    email: attributes.email || user.Username,
+    contact: attributes['custom:contact_number'] || '',
+    type,
+  };
+}
+
+function parseVerifiedAccessTokenClaims(accessToken) {
+  const parts = accessToken.split('.');
+  if (parts.length !== 3) {
+    throw authorizationError('Cognito access token is malformed.');
+  }
+
+  let claims;
+  try {
+    claims = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
+  } catch {
+    throw authorizationError('Cognito access token is malformed.');
+  }
+
+  const expectedIssuer = `https://cognito-idp.${config.cognitoRegion}.amazonaws.com/${config.cognitoUserPoolId}`;
+  if (claims.token_use !== 'access' || claims.client_id !== config.cognitoUserPoolClientId || claims.iss !== expectedIssuer) {
+    throw authorizationError('Cognito access token is not valid for this application.');
+  }
+  return claims;
+}
+
+function profileCookieHeader(profile) {
+  return [
+    `wonderland_profile_name=${encodeURIComponent(profile.name)}`,
+    `wonderland_profile_email=${encodeURIComponent(profile.email)}`,
+    `wonderland_profile_contact=${encodeURIComponent(profile.contact)}`,
+    `wonderland_profile_type=${encodeURIComponent(profile.type)}`,
+  ].join('; ');
+}
+
+function authorizationError(message) {
+  const error = new Error(message);
+  error.statusCode = 401;
+  return error;
 }

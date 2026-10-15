@@ -1,4 +1,5 @@
 import bcrypt from 'bcryptjs';
+import { randomUUID } from 'crypto';
 import { query } from '../db.js';
 
 export async function registerVisitor(request, response) {
@@ -27,12 +28,39 @@ export async function registerVisitor(request, response) {
 }
 
 export async function listVisitors(_request, response) {
+  if (getCookie(_request, 'wonderland_profile_type') !== 'admin') {
+    return response.status(403).json({ success: false, message: 'Administrator login required.' });
+  }
+
   const visitors = await query(
     `SELECT id, full_name, email, contact_number, status, created_at, updated_at
      FROM visitors_tb
      ORDER BY id DESC`,
   );
   response.json(visitors);
+}
+
+export async function syncCognitoVisitor(request, response) {
+  const profileType = getCookie(request, 'wonderland_profile_type');
+  const fullName = getCookie(request, 'wonderland_profile_name');
+  const email = getCookie(request, 'wonderland_profile_email');
+  const contactNumber = getCookie(request, 'wonderland_profile_contact');
+
+  if (profileType !== 'visitor' || !fullName || !email) {
+    return response.status(403).json({ success: false, message: 'Visitor login required.' });
+  }
+
+  await query(
+    `INSERT INTO visitors_tb (full_name, email, contact_number, password_hash, status)
+     VALUES (?, ?, ?, ?, 1)
+     ON DUPLICATE KEY UPDATE
+       full_name = VALUES(full_name),
+       contact_number = VALUES(contact_number),
+       status = 1`,
+    [fullName, email, contactNumber, bcrypt.hashSync(randomUUID(), 10)],
+  );
+
+  return response.json({ success: true, message: 'Visitor profile synchronized.' });
 }
 
 export async function visitorProfile(request, response) {

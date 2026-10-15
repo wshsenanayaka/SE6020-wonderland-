@@ -8,6 +8,8 @@ import { api } from '../services/api.js';
 export default function Register() {
   const { setNotice, setError } = useApp();
   const [registerForm, setRegisterForm] = useState(emptyRegister);
+  const [confirmationCode, setConfirmationCode] = useState('');
+  const [pendingEmail, setPendingEmail] = useState('');
   const navigate = useNavigate();
 
   function handleRegister(event) {
@@ -18,6 +20,23 @@ export default function Register() {
     api.registerVisitor(registerForm)
       .then((payload) => {
         setRegisterForm(emptyRegister);
+        setNotice(payload.message);
+        if (payload.confirmation_required) {
+          setPendingEmail(registerForm.email.trim().toLowerCase());
+          return;
+        }
+        navigate('/login');
+      })
+      .catch((requestError) => setError(requestError.message));
+  }
+
+  function handleConfirmation(event) {
+    event.preventDefault();
+    setNotice('');
+    setError('');
+
+    api.confirmCognitoRegistration({ email: pendingEmail, confirmation_code: confirmationCode })
+      .then((payload) => {
         setNotice(payload.message);
         navigate('/login');
       })
@@ -36,7 +55,16 @@ export default function Register() {
         </div>
       </section>
       <section className="auth-card">
-        <form className="panel-form" onSubmit={handleRegister}>
+        {pendingEmail ? (
+          <form className="panel-form" onSubmit={handleConfirmation}>
+            <span className="form-badge">Email Confirmation</span>
+            <h2>Confirm Your Account</h2>
+            <p>Enter the confirmation code sent to {pendingEmail}.</p>
+            <FormInput label="Confirmation Code" value={confirmationCode} onChange={setConfirmationCode} />
+            <button type="submit">Confirm Account</button>
+          </form>
+        ) : (
+          <form className="panel-form" onSubmit={handleRegister}>
           <span className="form-badge">Visitor Only</span>
           <h2>Register Visitor</h2>
           <p>Use this page only for new visitor profile registration.</p>
@@ -48,7 +76,8 @@ export default function Register() {
           <button type="submit">Register Visitor</button>
           <br />
           <Link className="text-link" to="/login">Already Have Login</Link>
-        </form>
+          </form>
+        )}
       </section>
     </main>
   );

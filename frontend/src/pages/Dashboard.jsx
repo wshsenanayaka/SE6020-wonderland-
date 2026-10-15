@@ -5,6 +5,7 @@ import FormInput from '../components/FormInput.jsx';
 import { emptyActivity, emptyTicketPass } from '../constants/forms.js';
 import { useApp } from '../context/AppContext.jsx';
 import { api } from '../services/api.js';
+import { isCognitoConfigured } from '../services/cognitoSession.js';
 
 export default function Dashboard() {
   const { data, profile, setProfile, reloadPlatformData, setNotice, setError } = useApp();
@@ -230,8 +231,11 @@ export default function Dashboard() {
     })
       .then((payload) => {
         setNotice(payload.message);
+        return isCognitoConfigured() ? api.syncVisitorProfile() : payload;
+      })
+      .then(() => reloadPlatformData())
+      .then((payload) => {
         setProfile(payload.profile || profile);
-        return reloadPlatformData();
       })
       .catch((requestError) => setError(requestError.message));
   }

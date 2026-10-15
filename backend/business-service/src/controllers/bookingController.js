@@ -3,6 +3,15 @@ import { createBooking, setBookingStripeSession } from '../services/bookingServi
 import { createCheckoutSession } from '../services/stripeService.js';
 
 export async function bookTicket(request, response) {
+  const profileType = request.cookies.wonderland_profile_type || '';
+  const profileName = request.cookies.wonderland_profile_name || '';
+  const profileEmail = request.cookies.wonderland_profile_email || '';
+  const profileContact = request.cookies.wonderland_profile_contact || '';
+
+  if (profileType !== 'visitor' || !profileName || !profileEmail) {
+    return response.status(403).json({ success: false, message: 'Visitor login required.' });
+  }
+
   const ticketTypes = toTicketTypesMap(await allTicketPasses());
   const fallbackKey = Object.keys(ticketTypes)[0];
   const ticketKey = String(request.body.ticket_type || fallbackKey || '');
@@ -14,14 +23,14 @@ export async function bookTicket(request, response) {
 
   const quantity = Math.max(1, Math.min(20, Number(request.body.quantity || 1)));
   const booking = {
-    visitor_name: String(request.body.visitor_name || '').trim(),
-    email: String(request.body.email || '').trim(),
+    visitor_name: profileName,
+    email: profileEmail,
     visit_date: String(request.body.visit_date || '').trim(),
     preferred_time_slot: String(request.body.preferred_time_slot || '').trim(),
     ticket_type: ticketKey,
     ticket_label: ticket.label,
     quantity,
-    contact_number: String(request.body.contact_number || '').trim(),
+    contact_number: profileContact || String(request.body.contact_number || '').trim(),
     currency_code: ticket.currency_code || 'USD',
     total: quantity * Number(ticket.price),
     created_at: new Date().toISOString(),

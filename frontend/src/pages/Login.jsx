@@ -3,6 +3,7 @@ import FormInput from '../components/FormInput.jsx';
 import { emptyLogin } from '../constants/forms.js';
 import { useApp } from '../context/AppContext.jsx';
 import { api } from '../services/api.js';
+import { isCognitoConfigured } from '../services/cognitoSession.js';
 import { useState } from 'react';
 
 export default function Login() {
@@ -17,6 +18,12 @@ export default function Login() {
 
     api.login(loginForm)
       .then(() => api.platformData())
+      .then((payload) => {
+        if (!isCognitoConfigured() || payload.profile?.type !== 'visitor') {
+          return payload;
+        }
+        return api.syncVisitorProfile().then(() => api.platformData());
+      })
       .then((payload) => {
         setData?.(payload);
         setProfile(payload.profile || { isLoggedIn: false });
@@ -43,14 +50,7 @@ export default function Login() {
         <form className="panel-form" onSubmit={handleLogin}>
           <span className="form-badge">Secure Access</span>
           <h2>Login</h2>
-          <p>Choose Visitor Profile or Administrator Profile before signing in.</p>
-          <label>
-            Profile Type
-            <select value={loginForm.profile_type} onChange={(event) => setLoginForm({ ...loginForm, profile_type: event.target.value })}>
-              <option value="visitor">Visitor Profile</option>
-              <option value="admin">Administrator Profile</option>
-            </select>
-          </label>
+          <p>Your Cognito account controls visitor or administrator access.</p>
           <FormInput label="Email Address" type="email" value={loginForm.email} onChange={(email) => setLoginForm({ ...loginForm, email })} />
           <FormInput label="Password" type="password" value={loginForm.password} onChange={(password) => setLoginForm({ ...loginForm, password })} />
           <button type="submit">Login</button>

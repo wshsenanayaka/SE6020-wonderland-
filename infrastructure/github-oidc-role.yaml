@@ -90,6 +90,31 @@ Resources:
                   - eks:ListTagsForResource
                 Resource: '*'
 
+              - Sid: CreateCognitoUserPools
+                Effect: Allow
+                Action: cognito-idp:CreateUserPool
+                Resource: '*'
+
+              - Sid: ManageWonderlandCognitoUserPools
+                Effect: Allow
+                Action:
+                  - cognito-idp:CreateGroup
+                  - cognito-idp:CreateUserPoolClient
+                  - cognito-idp:DeleteGroup
+                  - cognito-idp:DeleteUserPool
+                  - cognito-idp:DeleteUserPoolClient
+                  - cognito-idp:DescribeUserPool
+                  - cognito-idp:DescribeUserPoolClient
+                  - cognito-idp:GetGroup
+                  - cognito-idp:ListGroups
+                  - cognito-idp:ListTagsForResource
+                  - cognito-idp:TagResource
+                  - cognito-idp:UntagResource
+                  - cognito-idp:UpdateGroup
+                  - cognito-idp:UpdateUserPool
+                  - cognito-idp:UpdateUserPoolClient
+                Resource: !Sub 'arn:${AWS::Partition}:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/*'
+
               - Sid: ManageWonderlandTaskRoles
                 Effect: Allow
                 Action:

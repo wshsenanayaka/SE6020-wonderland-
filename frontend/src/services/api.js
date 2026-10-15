@@ -1,13 +1,22 @@
+import {
+  clearCognitoSession,
+  cognitoAccessToken,
+  isCognitoConfigured,
+  saveCognitoSession,
+} from './cognitoSession.js';
+
 const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
 
 async function request(path, options = {}) {
+  const accessToken = cognitoAccessToken();
   const response = await fetch(`${API_BASE}${path}`, {
     credentials: 'include',
+    ...options,
     headers: {
       'Content-Type': 'application/json',
+      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
       ...(options.headers || {}),
     },
-    ...options,
   });
 
   const payload = await response.json().catch(() => ({}));
@@ -34,9 +43,11 @@ export function assetUrl(path) {
 export const api = {
   platformData: () => request('/api/platform-data'),
   manageActivity: async (formData) => {
+    const accessToken = cognitoAccessToken();
     const response = await fetch(`${API_BASE}/api/business/activities`, {
       method: 'POST',
       credentials: 'include',
+      headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
       body: formData,
     });
     const responseText = await response.text();
@@ -82,21 +93,30 @@ export const api = {
     method: 'PUT',
     body: JSON.stringify(data),
   }),
-  login: (data) => request('/api/auth/login', {
+  login: async (data) => {
+    const payload = await request('/api/auth/login', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    saveCognitoSession(payload.authentication);
+    return payload;
+  },
+  registerVisitor: (data) => request(isCognitoConfigured() ? '/api/auth/register' : '/api/users/register', {
     method: 'POST',
     body: JSON.stringify(data),
   }),
-  registerVisitor: (data) => request('/api/users/register', {
+  confirmCognitoRegistration: (data) => request('/api/auth/confirm-registration', {
     method: 'POST',
     body: JSON.stringify(data),
   }),
+  syncVisitorProfile: () => request('/api/users/profile/sync', { method: 'POST', body: JSON.stringify({}) }),
   visitorProfile: () => request('/api/users/profile'),
-  updateVisitorProfile: (data) => request('/api/users/profile', {
+  updateVisitorProfile: (data) => request(isCognitoConfigured() ? '/api/auth/profile' : '/api/users/profile', {
     method: 'PUT',
     body: JSON.stringify(data),
   }),
-  logout: () => request('/api/auth/logout', {
-    method: 'POST',
-    body: JSON.stringify({}),
-  }),
+  logout: () => {
+    clearCognitoSession();
+    return Promise.resolve({ success: true, message: 'Logged out successfully.' });
+  },
 };
