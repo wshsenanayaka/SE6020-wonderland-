@@ -1,0 +1,628 @@
+WONDERLAND THEME PARK PLATFORM
+Project, Architecture, AWS Deployment, Cleanup, and Fresh Setup Report
+
+Document purpose
+================
+This report describes the Wonderland repository as it is configured in source
+code. It is a deployment and operating guide, not proof that every listed AWS
+resource currently exists. Check the AWS Console, CloudFormation stack events,
+and the latest GitHub Actions run for the live state.
+
+Project repository: wshsenanayaka/SE6020-wonderland-
+Primary branch: main
+AWS account used by the deployment: 840514731609
+AWS region: ap-southeast-1 (Singapore)
+Deployment environment: GitHub Environment "production"
+
+IMPORTANT SECURITY RULES
+========================
+1. Never commit .env files, AWS keys, .pem files, database passwords, Stripe
+   keys, SMTP passwords, or GitHub tokens.
+2. Do not add AWS_ACCESS_KEY_ID or AWS_SECRET_ACCESS_KEY to GitHub Secrets.
+   The project uses GitHub OpenID Connect (OIDC) and short-lived AWS sessions.
+3. Do not print AWS Secrets Manager secret values in workflow logs.
+4. The repository ignores future *.pem files. If an EC2 private key was ever
+   committed or pushed, rotate the EC2 key pair and remove the tracked key.
+5. Before deleting RDS, create and verify a manual snapshot or export if any
+   data must be retained. The current CD workflow uses development database
+   protection mode, where an RDS deletion can delete the database without a
+   final snapshot.
+
+1. PROJECT OVERVIEW
+===================
+Wonderland is a cloud-native theme park web platform. Visitors can explore
+attractions, register and sign in, select ticket passes, book visits, pay with
+Stripe Checkout, receive QR codes, and check in at the park. Administrators can
+manage attractions, ticket passes, bookings, live park information, and
+analytics.
+
+Primary functions
+-----------------
+- Attraction discovery and live park information.
+- Visitor registration, login, logout, and profile management.
+- Administrator login and administration dashboard.
+- Ticket pass management and visit booking.
+- Stripe sandbox payment confirmation.
+- QR-code generation, email delivery, resend, and QR check-in.
+- Visitor and administrator dashboard analytics.
+- Swagger API documentation through the API Gateway.
+
+Technology stack
+----------------
+- Frontend: React 18, Vite 5, React Router, SweetAlert2, QR code library.
+- Backend: Node.js 20, Express microservices.
+- Database: Amazon RDS for MySQL / MySQL-compatible application schema.
+- Payment: Stripe Checkout.
+- Email: Nodemailer SMTP.
+- Containers: Docker images stored in Amazon ECR.
+- Kubernetes runtime: Amazon EKS managed node group on EC2.
+- Legacy/rollback runtime: Amazon ECS Fargate services.
+- Frontend hosting: AWS Amplify static WEB application and legacy S3/CloudFront.
+- Infrastructure as code: AWS CloudFormation YAML templates.
+- Automation: GitHub Actions CI/CD using GitHub OIDC.
+
+Repository layout
+-----------------
+backend/
+  api-gateway/       Public API proxy, assets, Swagger documentation
+  auth-service/      Visitor/admin login, logout, session cookies
+  user-service/      Visitor registration, profiles, visitor operations
+  business-service/  Attractions, tickets, bookings, Stripe, QR, email
+frontend/            React/Vite single-page application; build output is dist/
+kubernetes/          Namespace, ConfigMap, Services, Deployments, ALB Ingress
+infrastructure/      OIDC role, Amplify hosting, and EKS CloudFormation stacks
+wonderland-infrastructure.yaml
+                     Shared VPC, RDS, ECR, ECS, S3, CloudFront infrastructure
+.github/workflows/   CI and CD GitHub Actions workflows
+docs/                Additional deployment and migration guidance
+
+Service ports
+-------------
+API Gateway       8089  Public entry point, /api proxy, /health, Swagger
+Auth Service      4001  Authentication and session functions
+User Service      4002  Registration and profile functions
+Business Service  4003  Attractions, tickets, bookings, payment, QR, email
+MySQL             3306  Private database connection
+
+2. APPLICATION AND RUNTIME ARCHITECTURE
+=======================================
+
+Logical request flow
+--------------------
+
+Browser
+  |
+  +--> AWS Amplify HTTPS frontend (React/Vite)
+  |       |
+  |       +--> CloudFront /api/*
+  |               |
+  |               +--> EKS Application Load Balancer
+  |                       |
+  |                       +--> Kubernetes Ingress
+  |                               |
+  |                               +--> api-gateway Pod :8089
+  |                                       |
+  |                                       +--> auth-service :4001
+  |                                       +--> user-service :4002
+  |                                       +--> business-service :4003
+  |                                               |
+  |                                               +--> RDS MySQL :3306
+  |                                               +--> Stripe / SMTP
+  |
+  +--> CloudFront/S3 legacy frontend remains as a rollback path
+
+Public and private boundaries
+-----------------------------
+- Amplify provides the public HTTPS React frontend.
+- CloudFront is the public origin used by the frontend for API requests.
+- The EKS ALB is internet-facing and exposes only the API Gateway via the
+  Kubernetes Ingress.
+- Auth, user, and business services are Kubernetes ClusterIP services. They are
+  internal and are reached through Kubernetes DNS only.
+- The RDS database is in private subnets. The EKS node security group is given
+  MySQL ingress to it. The database is not a public web endpoint.
+- ECS and its ALB are preserved as a rollback path while EKS is the live
+  backend deployment target.
+
+Kubernetes workload design
+--------------------------
+Namespace: wonderland
+
+- One Deployment per microservice: api-gateway, auth-service, user-service,
+  and business-service.
+- One ClusterIP Service per microservice.
+- The AWS Load Balancer Controller watches the wonderland-api Ingress and
+  creates an internet-facing ALB targeting the API Gateway Pods by IP.
+- The Ingress health check path is /health.
+- The API readiness response expected by CD is HTTP 200 JSON:
+  {"service":"api-gateway","status":"ok"}
+- Application non-secret configuration is rendered into a Kubernetes ConfigMap.
+- Database and integration credentials are read from AWS Secrets Manager during
+  CD and placed into the wonderland-application Kubernetes Secret.
+
+Database and secrets design
+---------------------------
+The shared application stack creates or reuses the Secrets Manager secret:
+
+  wonderland/production/application
+
+The DB_PASSWORD key is generated only for a new stack when bootstrapping is
+enabled. RDS uses a CloudFormation dynamic Secrets Manager reference rather
+than a plaintext CloudFormation parameter. ECS task definitions use secret
+injection. The EKS deployment reads the secret only while creating/updating the
+Kubernetes Secret.
+
+Expected secret JSON keys include:
+- DB_PASSWORD
+- STRIPE_SECRET_KEY
+- SMTP_HOST
+- SMTP_PORT
+- SMTP_SECURE
+- SMTP_USER
+- SMTP_PASSWORD
+- SMTP_FROM
+
+Do not change DB_PASSWORD in Secrets Manager without also updating the RDS
+master password through an approved process. A mismatch prevents application
+services from connecting to the database.
+
+3. AWS ARCHITECTURE AND CLOUDFORMATION STACKS
+=============================================
+
+Stack 1: wonderland-github-oidc
+-------------------------------
+Template: infrastructure/github-oidc-role.yaml
+
+Purpose:
+- Creates the GitHub Actions OIDC identity provider.
+- Creates IAM role wonderland-github-actions-deployer.
+- Trusts only GitHub Actions tokens for:
+  repo:wshsenanayaka/SE6020-wonderland-:environment:production
+- Requires audience sts.amazonaws.com.
+- Supplies the DeploymentRoleArn output for GitHub.
+
+This stack must be created or updated by an administrator/bootstrap identity.
+The GitHub deployment role must not change its own policy.
+
+The deployment role has permissions needed to manage project resources,
+including CloudFormation, ECR, ECS, EKS, EC2 networking, RDS, CloudFront,
+Secrets Manager, Service Discovery, and project-scoped IAM runtime roles. It
+also has narrowly scoped access for the EKS node-group service-linked role:
+
+  AWSServiceRoleForAmazonEKSNodegroup
+
+Do not replace this policy with AdministratorAccess or iam:*.
+
+Stack 2: wonderland-production
+------------------------------
+Template: wonderland-infrastructure.yaml
+
+Purpose:
+- Shared network and database foundation.
+- Amazon ECR repositories for all four services.
+- Legacy ECS Fargate services and ALB rollback path.
+- Legacy S3/CloudFront frontend rollback path.
+- Secrets Manager application secret.
+- CloudFront public API origin configuration.
+
+Main resources:
+- One VPC, two public subnets, two private subnets, Internet Gateway, and
+  public route table.
+- Load balancer, application, and database security groups.
+- RDS DB subnet group and one conditional RDS MySQL DB instance:
+  production mode uses snapshot/deletion protection defaults;
+  development mode is disposable and deletes the database on stack deletion.
+- ECR repositories:
+  wonderland-production-api-gateway
+  wonderland-production-auth-service
+  wonderland-production-user-service
+  wonderland-production-business-service
+- ECS cluster, service discovery namespace, task roles, task definitions,
+  CloudWatch log groups, services, and legacy ALB.
+- S3 frontend bucket, Origin Access Control, CloudFront distribution, and
+  S3 bucket policy.
+
+Important retained resources:
+- The application Secrets Manager secret uses Retain.
+- The S3 frontend bucket uses Retain.
+- In production database mode, RDS uses Snapshot on deletion/replacement.
+These resources can remain after a stack deletion and must be reviewed before
+starting a clean rebuild with the same names.
+
+Key outputs used by later stages:
+- VpcId, public and private subnet IDs, DatabaseSecurityGroupId
+- DatabaseEndpoint, DatabaseApplicationUsername, DatabaseApplicationName
+- ApplicationSecretsArn
+- FrontendBucketName and CloudFrontDistributionId
+- FrontendUrl, ApiOriginUrl, ApiUrl
+- EcsClusterName
+
+Stack 3: wonderland-amplify
+---------------------------
+Template: infrastructure/amplify-hosting.yaml
+
+Purpose:
+- Creates the Wonderland AWS Amplify static WEB application.
+- Connects the main GitHub branch.
+- Builds frontend/ with Node.js 20 and npm ci.
+- Publishes frontend/dist.
+- Supplies VITE_API_BASE_URL during the Vite build.
+
+Prerequisites:
+- GitHub connection token secret:
+  wonderland/production/amplify-github-token
+  Secret JSON format: {"token":"YOUR_GITHUB_TOKEN"}
+- Existing IAM role expected by the current template:
+  wonderland-amplify-service-role
+  It must trust amplify.amazonaws.com to call sts:AssumeRole.
+
+The template currently sets IAMServiceRole to the role above. Do not delete or
+detach the role while this template and workflow still reference it. The
+workflow validates platform WEB, the configured service role ARN, and no
+compute/SSR role before starting the Amplify release job.
+
+Outputs:
+- AmplifyAppId
+- AmplifyServiceRoleArn
+- AmplifyFrontendUrl
+
+Stack 4: wonderland-eks
+-----------------------
+Template: infrastructure/eks-cluster.yaml
+
+Purpose:
+- Deploys the EKS control plane and managed EC2 worker node group.
+- Reuses VPC, subnet, and database security group outputs from
+  wonderland-production.
+- Creates EKS-specific security groups, a launch template, IAM roles, the
+  Pod Identity agent, and the AWS Load Balancer Controller Pod Identity.
+
+Key configuration:
+- Cluster name: wonderland-production-eks
+- Kubernetes version: 1.35
+- Node group: primary
+- Node type: t3.medium by default
+- Desired nodes: 1 by default; maximum: 2 by default
+- Nodes use public subnets to avoid a NAT Gateway charge in the coursework
+  deployment.
+- RDS permits TCP/3306 only from the EKS node security group.
+
+The AWS service-linked role AWSServiceRoleForAmazonEKSNodegroup is AWS-managed.
+Do not edit, replace, or routinely delete it. Amazon EKS creates it when a
+managed node group is created if it is not already present.
+
+4. CI/CD PIPELINE
+=================
+
+Continuous Integration
+----------------------
+Workflow: .github/workflows/ci.yml
+
+Triggers:
+- Pull requests to main.
+- Pushes to main and develop.
+
+CI checks:
+- Installs each backend service with npm ci.
+- Runs Node.js syntax checks.
+- Runs service tests when a test script exists.
+- Builds Docker images for all microservices.
+- Installs and builds the React/Vite frontend.
+- Uploads frontend/dist as an artifact.
+- Runs cfn-lint on all CloudFormation templates.
+- Validates Kubernetes YAML offline with kubeconform in strict mode against
+  Kubernetes 1.35.0. It does not require an EKS cluster or AWS credentials.
+
+Continuous Deployment
+---------------------
+Workflow: .github/workflows/cd.yml
+
+Trigger:
+- Push to main.
+- Manual workflow_dispatch run.
+
+GitHub Actions permissions:
+- contents: read
+- id-token: write
+
+Deployment sequence:
+1. Validate Node.js frontend and backend source.
+2. Assume wonderland-github-actions-deployer using GitHub OIDC.
+3. Create/update wonderland-production foundational infrastructure.
+4. Log in to Amazon ECR; build and push commit-SHA and latest container tags.
+5. Build the React frontend and publish it to the legacy S3 rollback bucket.
+6. Create/start ECS services after the initial images exist; preserve ECS as a
+   rollback target.
+7. Deploy and verify Amplify hosting. The workflow reads the GitHub token from
+   Secrets Manager, refreshes the Amplify connection, starts a release job,
+   polls it, and prints useful failure logs.
+8. Validate the EKS template, confirm the active AWS identity, confirm the
+   OIDC bootstrap stack is complete, and confirm the node-group service-linked
+   role can be read through aws iam get-role.
+9. Create/update wonderland-eks. If the stack does not exist, CloudFormation
+   creates it. The workflow never automatically deletes a failed stack.
+10. Configure kubectl and Helm, install the AWS Load Balancer Controller,
+    apply Kubernetes configuration, secrets, Services, Deployments, and Ingress.
+11. Wait for all four Kubernetes Deployments to roll out.
+12. Wait up to 10 minutes for the Ingress ALB hostname, then up to another 10
+    minutes for DNS resolution and API readiness. The ALB must resolve and
+    /health must return HTTP 200 with the expected API Gateway JSON before the
+    workflow changes CloudFront's API origin.
+13. Update CloudFront's /api/* origin to the EKS ALB, invalidate CloudFront,
+    and verify the Amplify frontend and public API.
+
+Why the EKS readiness wait is important
+---------------------------------------
+Kubernetes can publish the ALB hostname before DNS is available on a GitHub
+Actions runner. The workflow uses getent ahostsv4 for DNS and curl for API
+health. It does not promote CloudFront to an unresolved or unhealthy origin.
+
+5. INITIAL SETUP FROM A CLEAN AWS AND GITHUB ACCOUNT
+====================================================
+
+Use this flow when all Wonderland AWS resources and GitHub deployment settings
+have been removed, or when creating the project in a fresh AWS account.
+
+Step 0: Prepare local tools and access
+--------------------------------------
+- Use an AWS administrator/bootstrap identity only for one-time IAM and
+  CloudFormation bootstrap actions.
+- Install AWS CLI v2, Git, Node.js 20, Docker Desktop, kubectl, and Helm.
+- Configure the AWS CLI for the correct account and ap-southeast-1 region.
+- Confirm identity before continuing:
+
+  aws sts get-caller-identity
+
+- Clone the repository and ensure main is current.
+- Never upload private keys or secret files to the repository.
+
+Step 1: Prepare GitHub
+----------------------
+1. Create or use repository wshsenanayaka/SE6020-wonderland-.
+2. Keep main as the deployment branch.
+3. In Settings -> Environments, create an environment named production.
+4. Apply branch protection/approval rules as required by the team.
+5. Do not create AWS access-key secrets.
+
+Step 2: Create the GitHub OIDC bootstrap stack
+-----------------------------------------------
+From an administrator/bootstrap terminal in the repository root, run:
+
+  aws cloudformation deploy \
+    --stack-name wonderland-github-oidc \
+    --template-file infrastructure/github-oidc-role.yaml \
+    --capabilities CAPABILITY_NAMED_IAM \
+    --region ap-southeast-1 \
+    --parameter-overrides ProjectName=wonderland
+
+Wait until the stack is CREATE_COMPLETE. Retrieve the deployment role ARN:
+
+  aws cloudformation describe-stacks \
+    --stack-name wonderland-github-oidc \
+    --region ap-southeast-1 \
+    --query "Stacks[0].Outputs[?OutputKey=='DeploymentRoleArn'].OutputValue" \
+    --output text
+
+In GitHub, open:
+Repository -> Settings -> Environments -> production -> Environment secrets
+
+Create this secret:
+
+  AWS_DEPLOY_ROLE_ARN = the DeploymentRoleArn output
+
+The OIDC trust policy is repository and environment specific. If the repository
+owner, repository name, branch/environment strategy changes, update the trust
+policy deliberately before deployment. Do not manually weaken it to all repos.
+
+Step 3: Create the Amplify prerequisites
+-----------------------------------------
+1. Create/verify IAM role wonderland-amplify-service-role.
+   - Trust principal: amplify.amazonaws.com
+   - Trust action: sts:AssumeRole
+   - Grant only the permissions required by the current Amplify hosting design.
+   - The role must exist because the current Amplify CloudFormation template
+     references its ARN.
+
+2. Create the GitHub connection secret in Secrets Manager. Do not store this
+   value in GitHub or in a local tracked file:
+
+  aws secretsmanager create-secret \
+    --name wonderland/production/amplify-github-token \
+    --secret-string '{"token":"REPLACE_WITH_A_FINE_GRAINED_GITHUB_TOKEN"}' \
+    --region ap-southeast-1
+
+The token must have access to this repository and must be usable by the AWS
+Amplify GitHub connection. Approve the AWS Amplify GitHub App for the repository
+when GitHub asks for authorization.
+
+Step 4: Run CI first
+--------------------
+Push the repository to main or open a pull request. Ensure the CI workflow
+passes before CD. Fix lint, Docker-build, frontend-build, or manifest failures
+before provisioning AWS infrastructure.
+
+Step 5: Start CD and create the shared application stack
+--------------------------------------------------------
+Push to main or run the Continuous Deployment workflow manually. The first CD
+run creates wonderland-production and then creates ECR repositories before it
+pushes images. It also creates the application Secrets Manager secret with an
+initial generated DB_PASSWORD.
+
+After the application secret is created, update it securely with Stripe and
+SMTP settings while retaining its existing DB_PASSWORD key. Do not paste the
+actual secret JSON into pull requests, issues, report files, or workflow logs.
+
+For the assignment/demo environment, CD currently passes:
+
+  DATABASE_PROTECTION_MODE=development
+
+Before a real production deployment, change this to production in cd.yml and
+review the RDS deletion protection, backup retention, and snapshot behavior.
+
+Step 6: Verify Amplify, EKS, and workload deployment
+-----------------------------------------------------
+The same CD run deploys Amplify and EKS after the foundational stack succeeds.
+Use CloudFormation stack outputs and the GitHub Actions logs for public URLs.
+Verify with:
+
+  aws cloudformation describe-stacks --region ap-southeast-1 --stack-name wonderland-production
+  aws cloudformation describe-stacks --region ap-southeast-1 --stack-name wonderland-amplify
+  aws cloudformation describe-stacks --region ap-southeast-1 --stack-name wonderland-eks
+  aws eks update-kubeconfig --region ap-southeast-1 --name wonderland-production-eks
+  kubectl get nodes -o wide
+  kubectl get deployments,pods,services,ingress -n wonderland
+
+Retrieve important URLs:
+
+  aws cloudformation describe-stacks \
+    --region ap-southeast-1 \
+    --stack-name wonderland-amplify \
+    --query "Stacks[0].Outputs[?OutputKey=='AmplifyFrontendUrl'].OutputValue" \
+    --output text
+
+  aws cloudformation describe-stacks \
+    --region ap-southeast-1 \
+    --stack-name wonderland-production \
+    --query "Stacks[0].Outputs[?OutputKey=='ApiUrl'].OutputValue" \
+    --output text
+
+6. CLEANUP / FULL RESET FLOW
+============================
+
+Read this section before deleting anything
+------------------------------------------
+Deleting CloudFormation stacks can create data loss and recurring-cost changes.
+Do not run a bulk delete command. Delete one stack at a time, wait for its final
+status, and inspect failures in CloudFormation Events. Keep records of stack
+outputs, database snapshots, and required secret names.
+
+Option A: Remove compute but preserve data
+------------------------------------------
+Use this for a temporary shutdown or migration.
+
+1. Confirm that EKS workloads are no longer serving traffic.
+2. Delete wonderland-eks manually. This removes the EKS cluster, managed nodes,
+   and EKS-created ALB resources after dependencies are released.
+3. Delete wonderland-amplify only if the public frontend is no longer needed.
+4. Keep wonderland-production if RDS, the S3 rollback bucket, application
+   secret, ECR repositories, CloudFront, or ECS rollback resources are needed.
+5. Remove GitHub environment secret AWS_DEPLOY_ROLE_ARN only after no more
+   deployments are required.
+
+Option B: Full reset of the assignment environment
+--------------------------------------------------
+1. Export application data or create a manual RDS snapshot and verify it.
+2. Record CloudFormation outputs, especially database and frontend information.
+3. Delete wonderland-eks first.
+4. Delete wonderland-amplify second.
+5. Delete wonderland-production third only after confirming the RDS, ECS,
+   CloudFront, S3, ECR, and application-secret consequences are acceptable.
+6. Review retained resources manually:
+   - wonderland/production/application in Secrets Manager is retained.
+   - The S3 frontend bucket is retained.
+   - A production-mode RDS delete produces a snapshot; the current development
+     mode can delete the database without a final snapshot.
+7. Delete retained S3 objects/buckets and Secrets Manager secrets only after
+   confirming they are not needed. These actions are irreversible.
+8. Delete wonderland-github-oidc last, after GitHub Actions no longer needs
+   AWS access. This removes the deployment role and OIDC provider created by
+   this project stack.
+9. In GitHub, remove AWS_DEPLOY_ROLE_ARN from the production environment and
+   remove or revoke the GitHub fine-grained token used by Amplify.
+10. Do not delete AWS service-linked roles simply to reset the project. Leave
+    AWSServiceRoleForAmazonEKSNodegroup unless AWS confirms it has no dependent
+    resources and it is intentionally being retired.
+
+Full reset verification checklist
+---------------------------------
+- CloudFormation no longer lists the deleted Wonderland stacks.
+- EKS cluster and managed node group are absent.
+- EKS-created ALBs, target groups, and security groups are reviewed.
+- No unexpected ECR image storage remains.
+- No running ECS tasks, Fargate services, RDS instances, or CloudFront
+  distributions continue to incur charges.
+- Retained S3 bucket and Secrets Manager secret are intentionally kept or
+  manually removed.
+- Amplify app and branches are intentionally kept or deleted.
+- GitHub production environment no longer contains active AWS deployment access.
+
+7. OPERATIONS AND TROUBLESHOOTING
+=================================
+
+CloudFormation failure
+----------------------
+Read the failed resource events first:
+
+  aws cloudformation describe-stack-events \
+    --stack-name <stack-name> \
+    --region ap-southeast-1 \
+    --output table
+
+Do not automatically delete failed stacks. For ROLLBACK_COMPLETE,
+ROLLBACK_FAILED, CREATE_FAILED, or UPDATE_ROLLBACK_FAILED, resolve the specific
+resource problem, then deliberately recover or delete only that failed stack.
+
+GitHub OIDC failure
+-------------------
+- Confirm the role ARN stored in GitHub production environment is the
+  DeploymentRoleArn from wonderland-github-oidc.
+- Confirm the workflow job uses environment: production.
+- Confirm OIDC trust subject exactly matches the repository and environment.
+- Confirm workflow permissions include id-token: write.
+- Update the bootstrap stack from an administrator session after changing
+  infrastructure/github-oidc-role.yaml.
+
+EKS node-group IAM failure
+--------------------------
+- Confirm wonderland-github-oidc is CREATE_COMPLETE or UPDATE_COMPLETE.
+- Confirm AWSServiceRoleForAmazonEKSNodegroup exists or let EKS create it.
+- Confirm the GitHub role can perform aws iam get-role for that role.
+- Do not let the GitHub deployment role modify its own IAM policy.
+- If AWS returns an AccessDenied despite a deployed allow statement, check for
+  permissions boundaries and AWS Organizations service control policies.
+
+ALB DNS or API readiness failure
+--------------------------------
+- Check the Ingress hostname:
+  kubectl get ingress wonderland-api -n wonderland -o wide
+- Check the Load Balancer Controller:
+  kubectl get pods -n kube-system -l app.kubernetes.io/name=aws-load-balancer-controller
+- Check Pod health and events:
+  kubectl get deployments,pods,services -n wonderland
+  kubectl get events -n wonderland --sort-by=.lastTimestamp
+- Wait for ALB DNS propagation. CD retries DNS and /health for up to ten
+  minutes after the hostname exists and will not promote CloudFront early.
+
+Amplify build failure
+---------------------
+- Confirm the Amplify secret exists and has JSON key token.
+- Confirm the GitHub token can read the repository and Amplify GitHub App access
+  is authorized.
+- Confirm frontend/package-lock.json and frontend/package.json are committed.
+- Confirm the configured build root is frontend and output is frontend/dist.
+- Review failed Amplify job log URLs printed by the CD workflow.
+
+8. FINAL DEPLOYMENT CHECKLIST
+=============================
+
+Before first deployment:
+- [ ] main contains the current infrastructure and workflow files.
+- [ ] GitHub Environment production exists.
+- [ ] wonderland-github-oidc is CREATE_COMPLETE/UPDATE_COMPLETE.
+- [ ] AWS_DEPLOY_ROLE_ARN is stored only as a GitHub production environment secret.
+- [ ] Amplify service role exists and trusts amplify.amazonaws.com.
+- [ ] Amplify GitHub token is stored only in AWS Secrets Manager.
+- [ ] CI passes.
+
+After deployment:
+- [ ] wonderland-production, wonderland-amplify, and wonderland-eks are complete.
+- [ ] ECR repositories contain the current commit-SHA images.
+- [ ] EKS primary node group is ACTIVE and nodes are Ready.
+- [ ] All four Pods/Deployments are Ready.
+- [ ] Ingress ALB resolves and /health returns the expected JSON.
+- [ ] CloudFront API origin has been promoted only after the health check.
+- [ ] Amplify frontend URL loads over HTTPS and can call /api.
+- [ ] Login, registration, booking, Stripe test payment, QR, email, and admin
+  dashboard are manually tested.
+
+End of report.

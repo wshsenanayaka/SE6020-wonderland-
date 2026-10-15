@@ -2,8 +2,18 @@ import bcrypt from 'bcryptjs';
 import { config } from '../config.js';
 import { query } from '../db.js';
 
+const usesHttpsFrontend = config.frontendOrigin.startsWith('https://');
+
 function setProfileCookies(response, profile) {
-  const options = { httpOnly: false, sameSite: 'lax', path: '/', maxAge: 24 * 60 * 60 * 1000 };
+  // Amplify and CloudFront use different site origins in AWS. Cross-site API
+  // requests need Secure + SameSite=None, while local HTTP development does not.
+  const options = {
+    httpOnly: true,
+    secure: usesHttpsFrontend,
+    sameSite: usesHttpsFrontend ? 'none' : 'lax',
+    path: '/',
+    maxAge: 24 * 60 * 60 * 1000,
+  };
   response.cookie('wonderland_profile_name', profile.name, options);
   response.cookie('wonderland_profile_email', profile.email, options);
   response.cookie('wonderland_profile_contact', profile.contact || '', options);
@@ -87,8 +97,14 @@ export async function login(request, response) {
 }
 
 export function logout(_request, response) {
+  const options = {
+    httpOnly: true,
+    secure: usesHttpsFrontend,
+    sameSite: usesHttpsFrontend ? 'none' : 'lax',
+    path: '/',
+  };
   ['wonderland_profile_name', 'wonderland_profile_email', 'wonderland_profile_contact', 'wonderland_profile_type'].forEach((name) => {
-    response.clearCookie(name, { path: '/' });
+    response.clearCookie(name, options);
   });
 
   response.json({ success: true, message: 'Logged out successfully.' });
