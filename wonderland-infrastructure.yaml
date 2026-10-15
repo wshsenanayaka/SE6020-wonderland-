@@ -522,6 +522,7 @@ Resources:
             ForwardedValues:
               QueryString: true
               Headers:
+                - Authorization
                 - Origin
                 - Access-Control-Request-Headers
                 - Access-Control-Request-Method
