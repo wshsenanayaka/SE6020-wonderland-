@@ -359,6 +359,8 @@ Read the setup and security instructions in [docs/CI-CD.md](docs/CI-CD.md).
 
 The EKS/EC2/Kubernetes deployment, Amplify frontend hosting setup, verification commands, cost guidance, and safe rollback plan are in [docs/AWS-DEPLOYMENT.md](docs/AWS-DEPLOYMENT.md).
 
+For a disposable local Kubernetes environment using Minikube, `kubectl`, NGINX Ingress, and local container images, see [docs/MINIKUBE.md](docs/MINIKUBE.md).
+
 ## Default Login
 
 Administrator:
