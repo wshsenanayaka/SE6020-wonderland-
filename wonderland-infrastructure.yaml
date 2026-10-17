@@ -1,5 +1,13 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: 'Wonderland production infrastructure: ECS Fargate microservices, RDS MySQL, ECR, S3 and CloudFront.'
+Description: 'Wonderland production infrastructure: ECS Fargate microservices, RDS MySQL, ECR, S3 and CloudFront with IP-only Cloud Map discovery.'
+
+Metadata:
+  AWSToolsMetrics:
+    AWSAgentToolkit: aws-cloudformation@3
+  com.aws.cloudformation.Context:
+    arch: ECS Fargate -> Cloud Map A records; gateway reaches internal services on fixed app ports
+    must:
+      - A-record service registries keep only RegistryArn; task and ALB port mappings remain separate
 
 Parameters:
   ProjectName:
@@ -783,6 +791,12 @@ Resources:
   AuthEcsService:
     Type: AWS::ECS::Service
     Condition: ShouldCreateApplicationServices
+    Metadata:
+      com.aws.cloudformation.Context:
+        why: register each Fargate task IP in the internal auth A record
+        must:
+          - do not add ContainerName, ContainerPort, or Port to this A-record registry mapping
+        mutable: change-with-constraints
     Properties:
       Cluster: !Ref EcsCluster
       ServiceName: !Sub '${ProjectName}-${EnvironmentName}-auth-service'
@@ -799,11 +813,16 @@ Resources:
             - !Ref PublicSubnetTwo
       ServiceRegistries:
         - RegistryArn: !GetAtt AuthDiscoveryService.Arn
-          ContainerName: auth-service
 
   UserEcsService:
     Type: AWS::ECS::Service
     Condition: ShouldCreateApplicationServices
+    Metadata:
+      com.aws.cloudformation.Context:
+        why: register each Fargate task IP in the internal user A record
+        must:
+          - do not add ContainerName, ContainerPort, or Port to this A-record registry mapping
+        mutable: change-with-constraints
     Properties:
       Cluster: !Ref EcsCluster
       ServiceName: !Sub '${ProjectName}-${EnvironmentName}-user-service'
@@ -820,11 +839,16 @@ Resources:
             - !Ref PublicSubnetTwo
       ServiceRegistries:
         - RegistryArn: !GetAtt UserDiscoveryService.Arn
-          ContainerName: user-service
 
   BusinessEcsService:
     Type: AWS::ECS::Service
     Condition: ShouldCreateApplicationServices
+    Metadata:
+      com.aws.cloudformation.Context:
+        why: register each Fargate task IP in the internal business A record
+        must:
+          - do not add ContainerName, ContainerPort, or Port to this A-record registry mapping
+        mutable: change-with-constraints
     Properties:
       Cluster: !Ref EcsCluster
       ServiceName: !Sub '${ProjectName}-${EnvironmentName}-business-service'
@@ -841,7 +865,6 @@ Resources:
             - !Ref PublicSubnetTwo
       ServiceRegistries:
         - RegistryArn: !GetAtt BusinessDiscoveryService.Arn
-          ContainerName: business-service
 
   GatewayEcsService:
     Type: AWS::ECS::Service
