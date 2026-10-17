@@ -776,7 +776,27 @@ jobs:
             -e "s|__ECR_REGISTRY__|$ecr_registry|g" \
             -e "s|__IMAGE_TAG__|$GITHUB_SHA|g" \
             kubernetes/metabase-deployment.yaml | kubectl apply -f -
-          kubectl rollout status deployment/metabase -n wonderland --timeout=10m
+          if ! kubectl rollout status deployment/metabase -n wonderland --timeout=10m; then
+            echo '::error title=Metabase rollout failed::The Metabase pod did not become Ready within 10 minutes. Pod status, events, and logs follow.'
+            kubectl get deployment metabase --namespace wonderland -o wide || true
+            kubectl get pods --namespace wonderland \
+              --selector app.kubernetes.io/name=metabase -o wide || true
+            kubectl describe pods --namespace wonderland \
+              --selector app.kubernetes.io/name=metabase || true
+            kubectl get events --namespace wonderland \
+              --field-selector involvedObject.kind=Pod \
+              --sort-by=.lastTimestamp | tail -n 50 || true
+            for pod in $(kubectl get pods --namespace wonderland \
+              --selector app.kubernetes.io/name=metabase -o name); do
+              echo "Metabase logs for $pod:"
+              kubectl logs --namespace wonderland "$pod" \
+                --all-containers --tail=200 --prefix || true
+              echo "Previous Metabase logs for $pod:"
+              kubectl logs --namespace wonderland "$pod" \
+                --all-containers --previous --tail=200 --prefix || true
+            done
+            exit 1
+          fi
           kubectl apply -f kubernetes/ingress.yaml
 
       - name: Verify EKS API and promote CloudFront origin
