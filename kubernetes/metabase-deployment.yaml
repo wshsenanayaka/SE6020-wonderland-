@@ -19,6 +19,44 @@ spec:
         app.kubernetes.io/part-of: wonderland
         app.kubernetes.io/component: analytics
     spec:
+      initContainers:
+        - name: wait-for-metabase-db
+          image: mysql:8.4
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: MB_DB_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: wonderland-config
+                  key: DB_HOST
+            - name: MB_DB_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: wonderland-config
+                  key: DB_PORT
+            - name: MB_DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: wonderland-metabase
+                  key: MB_DB_USER
+            - name: MB_DB_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: wonderland-metabase
+                  key: MB_DB_PASS
+          command: ['/bin/bash', '-ec']
+          args:
+            - |
+              for attempt in $(seq 1 60); do
+                if MYSQL_PWD="$MB_DB_PASS" mysqladmin ping --protocol=TCP -h "$MB_DB_HOST" -P "$MB_DB_PORT" -u "$MB_DB_USER" --silent; then
+                  echo "Metabase metadata database is reachable at $MB_DB_HOST:$MB_DB_PORT"
+                  exit 0
+                fi
+                echo "Waiting for Metabase metadata database (attempt $attempt/60)..."
+                sleep 10
+              done
+              echo "Timed out waiting for Metabase metadata database connection." >&2
+              exit 1
       containers:
         - name: metabase
           image: metabase/metabase:v0.56.7
@@ -56,10 +94,20 @@ spec:
                 secretKeyRef:
                   name: wonderland-metabase
                   key: MB_ENCRYPTION_SECRET_KEY
+            - name: MB_DB_CONNECTION_PROPERTIES
+              value: 'socketTimeout=60000&connectTimeout=30000'
             - name: MB_ANON_TRACKING_ENABLED
               value: 'false'
             - name: MB_JETTY_PORT
               value: '3000'
+          startupProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 60
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 30
           readinessProbe:
             httpGet:
               path: /api/health
