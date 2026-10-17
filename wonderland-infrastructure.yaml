@@ -283,7 +283,7 @@ Resources:
       # New stacks generate DB_PASSWORD here; existing secret values remain unchanged.
       GenerateSecretString: !If
         - ShouldBootstrapApplicationSecret
-        - SecretStringTemplate: '{"STRIPE_SECRET_KEY":"","SMTP_HOST":"","SMTP_PORT":"587","SMTP_SECURE":"false","SMTP_USER":"","SMTP_PASSWORD":"","SMTP_FROM":"Wonderland Theme Park <no-reply@wonderland.local>"}'
+        - SecretStringTemplate: '{"STRIPE_SECRET_KEY":"","SMTP_HOST":"","SMTP_PORT":"587","SMTP_SECURE":"false","SMTP_USER":"","SMTP_PASSWORD":"","SMTP_FROM":"Wonderland Theme Park <no-reply@wonderland.test>","DB_PASSWORD":""}'
           GenerateStringKey: DB_PASSWORD
           PasswordLength: 32
           ExcludeCharacters: '"@/\'
@@ -294,7 +294,8 @@ Resources:
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
     Properties:
-      Name: !Sub '${ProjectName}/${EnvironmentName}/analytics-reporting'
+      # Keep the stack-specific name to avoid collisions with already-created secrets.
+      Name: !Sub '${ProjectName}/${EnvironmentName}/analytics-reporting-${AWS::StackName}'
       Description: Read-only reporting database credentials for Wonderland analytics.
       GenerateSecretString:
         SecretStringTemplate: '{"username":"wonderland_reporting"}'
@@ -307,7 +308,8 @@ Resources:
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
     Properties:
-      Name: !Sub '${ProjectName}/${EnvironmentName}/metabase-metadata'
+      # Keep the stack-specific name to avoid collisions with already-created secrets.
+      Name: !Sub '${ProjectName}/${EnvironmentName}/metabase-metadata-${AWS::StackName}'
       Description: Metabase application database credentials for Wonderland analytics.
       GenerateSecretString:
         SecretStringTemplate: '{"username":"wonderland_metabase"}'
@@ -323,6 +325,7 @@ Resources:
       Name: !Sub '${ProjectName}/${EnvironmentName}/metabase-encryption'
       Description: Encryption key used by the internal Wonderland Metabase deployment.
       GenerateSecretString:
+        SecretStringTemplate: '{}'
         GenerateStringKey: encryption_key
         PasswordLength: 48
         ExcludePunctuation: true
