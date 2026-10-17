@@ -81,7 +81,8 @@ spec:
               done
 
               mysql --protocol=TCP -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" <<SQL
-              CREATE DATABASE IF NOT EXISTS \`metabase\`;
+              CREATE DATABASE IF NOT EXISTS \`metabase\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+              ALTER DATABASE \`metabase\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
               CREATE USER IF NOT EXISTS '$METABASE_DB_USERNAME'@'%' IDENTIFIED BY '$METABASE_DB_PASSWORD';
               ALTER USER '$METABASE_DB_USERNAME'@'%' IDENTIFIED BY '$METABASE_DB_PASSWORD';
               GRANT ALL PRIVILEGES ON \`metabase\`.* TO '$METABASE_DB_USERNAME'@'%';
@@ -93,6 +94,17 @@ spec:
               GRANT SELECT ON \`$DB_NAME\`.\`analytics_busiest_times\` TO '$REPORTING_DB_USERNAME'@'%';
               FLUSH PRIVILEGES;
               SQL
+
+              echo 'Verifying the Metabase metadata database, charset, and dedicated account.'
+              metabase_charset=$(MYSQL_PWD="$METABASE_DB_PASSWORD" mysql --protocol=TCP \
+                -h "$DB_HOST" -P "$DB_PORT" -u "$METABASE_DB_USERNAME" \
+                --database=metabase --batch --skip-column-names \
+                -e 'SELECT @@character_set_database;')
+              if [ "$metabase_charset" != 'utf8mb4' ]; then
+                echo "Metabase metadata database must use utf8mb4, received: $metabase_charset" >&2
+                exit 1
+              fi
+              echo "Metabase metadata database is reachable with charset: $metabase_charset"
           resources:
             requests:
               cpu: 50m
