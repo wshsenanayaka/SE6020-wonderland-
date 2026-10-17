@@ -64,6 +64,34 @@ export default function Home() {
     }, 100);
   }, [data.ticketPasses, profile]);
 
+  useEffect(() => {
+    const activityIds = visibleAttractions
+      .map((attraction) => Number(attraction.id))
+      .filter((id) => Number.isSafeInteger(id) && id > 0);
+    if (activityIds.length === 0) {
+      return;
+    }
+
+    const storageKey = `wonderland_activity_impressions_${new Date().toISOString().slice(0, 10)}`;
+    let recordedIds = [];
+    try {
+      recordedIds = JSON.parse(window.sessionStorage.getItem(storageKey) || '[]');
+    } catch {
+      recordedIds = [];
+    }
+
+    const existing = new Set(recordedIds.map(Number));
+    const newIds = activityIds.filter((id) => !existing.has(id));
+    if (newIds.length === 0) {
+      return;
+    }
+
+    window.sessionStorage.setItem(storageKey, JSON.stringify([...existing, ...newIds]));
+    api.recordActivityImpressions(newIds).catch(() => {
+      // Analytics must never interrupt a visitor's browsing experience.
+    });
+  }, [visibleAttractions]);
+
   async function handleBooking(event) {
     event.preventDefault();
     setNotice('');

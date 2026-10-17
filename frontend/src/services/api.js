@@ -42,6 +42,10 @@ export function assetUrl(path) {
 
 export const api = {
   platformData: () => request('/api/platform-data'),
+  recordActivityImpressions: (activityIds) => request('/api/business/analytics/activity-impressions', {
+    method: 'POST',
+    body: JSON.stringify({ activity_ids: activityIds }),
+  }),
   manageActivity: async (formData) => {
     const accessToken = cognitoAccessToken();
     const response = await fetch(`${API_BASE}/api/business/activities`, {

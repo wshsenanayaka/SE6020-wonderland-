@@ -281,6 +281,44 @@ Resources:
           ExcludeCharacters: '"@/\'
         - !Ref AWS::NoValue
 
+  AnalyticsReportingSecret:
+    Type: AWS::SecretsManager::Secret
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Name: !Sub '${ProjectName}/${EnvironmentName}/analytics-reporting'
+      Description: Read-only reporting database credentials for Wonderland analytics.
+      GenerateSecretString:
+        SecretStringTemplate: '{"username":"wonderland_reporting"}'
+        GenerateStringKey: password
+        PasswordLength: 32
+        ExcludePunctuation: true
+
+  MetabaseMetadataSecret:
+    Type: AWS::SecretsManager::Secret
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Name: !Sub '${ProjectName}/${EnvironmentName}/metabase-metadata'
+      Description: Metabase application database credentials for Wonderland analytics.
+      GenerateSecretString:
+        SecretStringTemplate: '{"username":"wonderland_metabase"}'
+        GenerateStringKey: password
+        PasswordLength: 32
+        ExcludePunctuation: true
+
+  MetabaseEncryptionSecret:
+    Type: AWS::SecretsManager::Secret
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Name: !Sub '${ProjectName}/${EnvironmentName}/metabase-encryption'
+      Description: Encryption key used by the internal Wonderland Metabase deployment.
+      GenerateSecretString:
+        GenerateStringKey: encryption_key
+        PasswordLength: 48
+        ExcludePunctuation: true
+
   ApiGatewayRepository:
     Type: AWS::ECR::Repository
     Properties:
@@ -876,6 +914,15 @@ Outputs:
   ApplicationSecretsArn:
     Description: Store Stripe and SMTP values in this Secrets Manager secret JSON.
     Value: !Ref ApplicationSecrets
+  AnalyticsReportingSecretArn:
+    Description: Read-only RDS reporting account credentials for the analytics platform.
+    Value: !Ref AnalyticsReportingSecret
+  MetabaseMetadataSecretArn:
+    Description: Metabase internal metadata database credentials.
+    Value: !Ref MetabaseMetadataSecret
+  MetabaseEncryptionSecretArn:
+    Description: Metabase encryption key used only by the internal analytics deployment.
+    Value: !Ref MetabaseEncryptionSecret
   DatabaseEndpoint:
     Description: Private RDS MySQL endpoint.
     Value: !If

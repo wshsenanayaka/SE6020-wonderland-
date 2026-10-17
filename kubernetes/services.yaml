@@ -53,3 +53,20 @@ spec:
     - name: http
       port: 4003
       targetPort: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: metabase
+  namespace: wonderland
+  labels:
+    app.kubernetes.io/name: metabase
+    app.kubernetes.io/part-of: wonderland
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: metabase
+  ports:
+    - name: http
+      port: 3000
+      targetPort: http

@@ -4,6 +4,8 @@ Wonderland is a cloud-native theme park web platform for attraction discovery, v
 
 The project uses a React frontend with a Node.js microservices backend, MySQL persistence, Stripe sandbox payment, QR code generation, email notifications, and Swagger API documentation.
 
+Analytics is available through an internal Metabase deployment backed by aggregate-only MySQL reporting views. See [Monitoring and analytics](docs/ANALYTICS.md) for the data model, access procedure, and dashboard setup.
+
 ## Project Structure
 
 ```text

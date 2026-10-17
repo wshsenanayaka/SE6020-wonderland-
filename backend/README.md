@@ -33,7 +33,21 @@ http://127.0.0.1:8089
 
 ## Run Locally Without Docker
 
-Open four terminals.
+Recommended: start every backend service from one terminal. This prevents the API gateway from returning `Gateway proxy failed: fetch failed` when one of its internal services is offline.
+
+```powershell
+cd backend
+npm.cmd install
+npm.cmd run dev
+```
+
+Keep that terminal running, then start the React frontend from `frontend` in a second terminal:
+
+```powershell
+npm.cmd run dev
+```
+
+Alternatively, open four terminals and start each service separately.
 
 ```bash
 cd backend/auth-service

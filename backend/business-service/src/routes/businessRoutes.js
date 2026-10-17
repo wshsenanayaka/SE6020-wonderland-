@@ -2,6 +2,7 @@ import { Router } from 'express';
 import multer from 'multer';
 import os from 'os';
 import { manageActivity } from '../controllers/activityController.js';
+import { recordActivityImpressionsController } from '../controllers/analyticsController.js';
 import { bookTicket } from '../controllers/bookingController.js';
 import { checkInTicketBooking } from '../controllers/checkInController.js';
 import { resendBookingEmail } from '../controllers/emailController.js';
@@ -19,6 +20,7 @@ const upload = multer({ dest: os.tmpdir() });
 const router = Router();
 
 router.get('/platform-data', platformData);
+router.post('/analytics/activity-impressions', recordActivityImpressionsController);
 router.post('/bookings', bookTicket);
 router.post('/bookings/:id/check-in', checkInTicketBooking);
 router.post('/bookings/:id/resend-email', resendBookingEmail);

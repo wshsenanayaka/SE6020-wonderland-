@@ -158,6 +158,9 @@ function requiresCognitoAuthentication(pathname) {
   if (pathname === '/api/platform-data' || pathname === '/health' || pathname.startsWith('/assets/')) {
     return false;
   }
+  if (pathname === '/api/business/analytics/activity-impressions') {
+    return false;
+  }
   if (pathname === '/api/auth/login' || pathname === '/api/auth/register' || pathname === '/api/auth/confirm-registration') {
     return false;
   }

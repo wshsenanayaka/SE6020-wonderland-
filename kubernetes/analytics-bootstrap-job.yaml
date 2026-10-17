@@ -1,0 +1,102 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: wonderland-analytics-bootstrap
+  namespace: wonderland
+  labels:
+    app.kubernetes.io/part-of: wonderland
+    app.kubernetes.io/component: analytics
+spec:
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/part-of: wonderland
+        app.kubernetes.io/component: analytics
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: database-bootstrap
+          image: mysql:8.4
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: DB_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: wonderland-config
+                  key: DB_HOST
+            - name: DB_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: wonderland-config
+                  key: DB_PORT
+            - name: DB_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: wonderland-config
+                  key: DB_NAME
+            - name: DB_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: wonderland-config
+                  key: DB_USER
+            - name: MYSQL_PWD
+              valueFrom:
+                secretKeyRef:
+                  name: wonderland-analytics-bootstrap
+                  key: DB_PASSWORD
+            - name: REPORTING_DB_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: wonderland-analytics-bootstrap
+                  key: REPORTING_DB_USERNAME
+            - name: REPORTING_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: wonderland-analytics-bootstrap
+                  key: REPORTING_DB_PASSWORD
+            - name: METABASE_DB_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: wonderland-analytics-bootstrap
+                  key: METABASE_DB_USERNAME
+            - name: METABASE_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: wonderland-analytics-bootstrap
+                  key: METABASE_DB_PASSWORD
+          command: ['/bin/sh', '-ec']
+          args:
+            - |
+              for attempt in $(seq 1 30); do
+                if mysqladmin ping --protocol=TCP -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" --silent; then
+                  break
+                fi
+                if [ "$attempt" = 30 ]; then
+                  echo 'Timed out waiting for the reporting database connection.' >&2
+                  exit 1
+                fi
+                sleep 10
+              done
+
+              mysql --protocol=TCP -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" <<SQL
+              CREATE DATABASE IF NOT EXISTS \`metabase\`;
+              CREATE USER IF NOT EXISTS '$METABASE_DB_USERNAME'@'%' IDENTIFIED BY '$METABASE_DB_PASSWORD';
+              ALTER USER '$METABASE_DB_USERNAME'@'%' IDENTIFIED BY '$METABASE_DB_PASSWORD';
+              GRANT ALL PRIVILEGES ON \`metabase\`.* TO '$METABASE_DB_USERNAME'@'%';
+              CREATE USER IF NOT EXISTS '$REPORTING_DB_USERNAME'@'%' IDENTIFIED BY '$REPORTING_DB_PASSWORD';
+              ALTER USER '$REPORTING_DB_USERNAME'@'%' IDENTIFIED BY '$REPORTING_DB_PASSWORD';
+              GRANT SELECT ON \`$DB_NAME\`.\`analytics_daily_arrivals\` TO '$REPORTING_DB_USERNAME'@'%';
+              GRANT SELECT ON \`$DB_NAME\`.\`analytics_ticket_purchases\` TO '$REPORTING_DB_USERNAME'@'%';
+              GRANT SELECT ON \`$DB_NAME\`.\`analytics_ride_popularity\` TO '$REPORTING_DB_USERNAME'@'%';
+              GRANT SELECT ON \`$DB_NAME\`.\`analytics_busiest_times\` TO '$REPORTING_DB_USERNAME'@'%';
+              FLUSH PRIVILEGES;
+              SQL
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi

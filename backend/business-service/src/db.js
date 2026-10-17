@@ -10,6 +10,10 @@ export async function query(sql, params = []) {
   return rows;
 }
 
+export async function initializeDatabase() {
+  await ensureDatabase();
+}
+
 async function ensureDatabase() {
   if (ready) {
     return ready;
@@ -171,6 +175,70 @@ async function ensureDatabase() {
       'ALTER TABLE ticket_bookings_tb ADD COLUMN arrived_at DATETIME NULL AFTER checkin_status',
     );
     await pool.query("UPDATE ticket_bookings_tb SET qr_token = UUID() WHERE qr_token IS NULL OR qr_token = ''");
+
+    // These aggregate-only tables and views deliberately exclude visitor names, emails, and contact details.
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS activity_daily_metrics (
+        metric_date DATE NOT NULL,
+        activity_id INT UNSIGNED NOT NULL,
+        impressions INT UNSIGNED NOT NULL DEFAULT 0,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        PRIMARY KEY (metric_date, activity_id),
+        CONSTRAINT fk_activity_daily_metrics_activity
+          FOREIGN KEY (activity_id) REFERENCES activities_tb(id)
+          ON DELETE CASCADE
+      )
+    `);
+
+    await pool.query(`
+      CREATE OR REPLACE VIEW analytics_daily_arrivals AS
+      SELECT
+        DATE(arrived_at) AS arrival_date,
+        COUNT(*) AS arrived_bookings,
+        COALESCE(SUM(quantity), 0) AS arrived_visitors
+      FROM ticket_bookings_tb
+      WHERE checkin_status = 'Arrived' AND arrived_at IS NOT NULL
+      GROUP BY DATE(arrived_at)
+    `);
+
+    await pool.query(`
+      CREATE OR REPLACE VIEW analytics_ticket_purchases AS
+      SELECT
+        DATE(paid_at) AS purchase_date,
+        ticket_label,
+        currency_code,
+        COUNT(*) AS paid_bookings,
+        COALESCE(SUM(quantity), 0) AS tickets_purchased,
+        COALESCE(SUM(total_amount), 0) AS paid_revenue
+      FROM ticket_bookings_tb
+      WHERE payment_status = 'Paid' AND paid_at IS NOT NULL
+      GROUP BY DATE(paid_at), ticket_label, currency_code
+    `);
+
+    await pool.query(`
+      CREATE OR REPLACE VIEW analytics_ride_popularity AS
+      SELECT
+        metrics.metric_date,
+        activities.id AS activity_id,
+        activities.name AS activity_name,
+        activities.category AS activity_category,
+        COALESCE(SUM(metrics.impressions), 0) AS interest_events
+      FROM activity_daily_metrics metrics
+      INNER JOIN activities_tb activities ON activities.id = metrics.activity_id
+      GROUP BY metrics.metric_date, activities.id, activities.name, activities.category
+    `);
+
+    await pool.query(`
+      CREATE OR REPLACE VIEW analytics_busiest_times AS
+      SELECT
+        visit_date,
+        preferred_time_slot,
+        COUNT(*) AS paid_bookings,
+        COALESCE(SUM(quantity), 0) AS paid_tickets
+      FROM ticket_bookings_tb
+      WHERE payment_status = 'Paid'
+      GROUP BY visit_date, preferred_time_slot
+    `);
 
     await pool.query(`
       CREATE TABLE IF NOT EXISTS park_operations_tb (

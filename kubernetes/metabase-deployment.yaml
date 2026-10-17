@@ -1,0 +1,85 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: metabase
+  namespace: wonderland
+  labels:
+    app.kubernetes.io/name: metabase
+    app.kubernetes.io/part-of: wonderland
+    app.kubernetes.io/component: analytics
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: metabase
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: metabase
+        app.kubernetes.io/part-of: wonderland
+        app.kubernetes.io/component: analytics
+    spec:
+      containers:
+        - name: metabase
+          image: metabase/metabase:v0.56.7
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 3000
+          env:
+            - name: MB_DB_TYPE
+              value: mysql
+            - name: MB_DB_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: wonderland-config
+                  key: DB_HOST
+            - name: MB_DB_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: wonderland-config
+                  key: DB_PORT
+            - name: MB_DB_DBNAME
+              value: metabase
+            - name: MB_DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: wonderland-metabase
+                  key: MB_DB_USER
+            - name: MB_DB_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: wonderland-metabase
+                  key: MB_DB_PASS
+            - name: MB_ENCRYPTION_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: wonderland-metabase
+                  key: MB_ENCRYPTION_SECRET_KEY
+            - name: MB_ANON_TRACKING_ENABLED
+              value: 'false'
+            - name: MB_JETTY_PORT
+              value: '3000'
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 45
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 20
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 120
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 5
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: 1000m
+              memory: 1024Mi
