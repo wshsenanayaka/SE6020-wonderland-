@@ -7,7 +7,9 @@ metadata:
     app.kubernetes.io/part-of: wonderland
     app.kubernetes.io/component: analytics
 spec:
-  backoffLimit: 3
+  # A failed bootstrap must leave its pod available for the workflow diagnostics.
+  # The following deployment run deletes this Job before creating a fresh one.
+  backoffLimit: 0
   ttlSecondsAfterFinished: 3600
   template:
     metadata:
@@ -15,7 +17,7 @@ spec:
         app.kubernetes.io/part-of: wonderland
         app.kubernetes.io/component: analytics
     spec:
-      restartPolicy: OnFailure
+      restartPolicy: Never
       containers:
         - name: database-bootstrap
           image: mysql:8.4

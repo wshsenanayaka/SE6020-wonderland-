@@ -764,7 +764,8 @@ jobs:
 
           kubectl delete job wonderland-analytics-bootstrap --namespace wonderland --ignore-not-found
           kubectl apply -f kubernetes/analytics-bootstrap-job.yaml
-          if ! kubectl wait --for=condition=complete job/wonderland-analytics-bootstrap --namespace wonderland --timeout=5m; then
+
+          report_analytics_bootstrap_failure() {
             echo '::error title=Analytics database bootstrap failed::The reporting views or least-privilege database accounts could not be configured.'
             kubectl get job wonderland-analytics-bootstrap --namespace wonderland -o wide || true
             kubectl describe job wonderland-analytics-bootstrap --namespace wonderland || true
@@ -781,6 +782,32 @@ jobs:
               kubectl logs --namespace wonderland "$pod" \
                 --all-containers --previous --tail=200 --prefix || true
             done
+          }
+
+          bootstrap_completed=false
+          for attempt in $(seq 1 60); do
+            bootstrap_complete_status="$(kubectl get job wonderland-analytics-bootstrap --namespace wonderland \
+              -o jsonpath='{.status.conditions[?(@.type=="Complete")].status}')"
+            bootstrap_failed_status="$(kubectl get job wonderland-analytics-bootstrap --namespace wonderland \
+              -o jsonpath='{.status.conditions[?(@.type=="Failed")].status}')"
+
+            if [ "$bootstrap_complete_status" = 'True' ]; then
+              bootstrap_completed=true
+              break
+            fi
+
+            if [ "$bootstrap_failed_status" = 'True' ]; then
+              report_analytics_bootstrap_failure
+              kubectl delete secret wonderland-analytics-bootstrap --namespace wonderland --ignore-not-found
+              exit 1
+            fi
+
+            sleep 5
+          done
+
+          if [ "$bootstrap_completed" != true ]; then
+            echo '::error title=Analytics database bootstrap timed out::The bootstrap Job did not reach Complete or Failed within five minutes.'
+            report_analytics_bootstrap_failure
             kubectl delete secret wonderland-analytics-bootstrap --namespace wonderland --ignore-not-found
             exit 1
           fi
