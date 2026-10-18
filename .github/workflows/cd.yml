@@ -766,7 +766,21 @@ jobs:
           kubectl apply -f kubernetes/analytics-bootstrap-job.yaml
           if ! kubectl wait --for=condition=complete job/wonderland-analytics-bootstrap --namespace wonderland --timeout=5m; then
             echo '::error title=Analytics database bootstrap failed::The reporting views or least-privilege database accounts could not be configured.'
-            kubectl logs job/wonderland-analytics-bootstrap --namespace wonderland --tail=100 || true
+            kubectl get job wonderland-analytics-bootstrap --namespace wonderland -o wide || true
+            kubectl describe job wonderland-analytics-bootstrap --namespace wonderland || true
+            kubectl get pods --namespace wonderland \
+              --selector job-name=wonderland-analytics-bootstrap -o wide || true
+            kubectl describe pods --namespace wonderland \
+              --selector job-name=wonderland-analytics-bootstrap || true
+            for pod in $(kubectl get pods --namespace wonderland \
+              --selector job-name=wonderland-analytics-bootstrap -o name); do
+              echo "Analytics bootstrap logs for $pod:"
+              kubectl logs --namespace wonderland "$pod" \
+                --all-containers --tail=200 --prefix || true
+              echo "Previous analytics bootstrap logs for $pod:"
+              kubectl logs --namespace wonderland "$pod" \
+                --all-containers --previous --tail=200 --prefix || true
+            done
             kubectl delete secret wonderland-analytics-bootstrap --namespace wonderland --ignore-not-found
             exit 1
           fi
