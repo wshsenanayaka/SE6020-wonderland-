@@ -212,6 +212,12 @@ After starting the backend, open:
 http://127.0.0.1:8089/api-docs
 ```
 
+For the deployed API, open `https://<CloudFront-domain>/api-docs`. The Swagger UI
+uses the current origin, so **Try it out** sends requests through the same API
+gateway and CloudFront route as the frontend. Select **Authorize** and paste a
+short-lived Cognito access token for protected endpoints. Do not paste a Cognito
+ID token, a password, or an AWS credential.
+
 OpenAPI JSON:
 
 ```text

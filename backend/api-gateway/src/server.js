@@ -36,6 +36,9 @@ app.get('/api-docs/openapi.json', (_request, response) => {
 });
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(openApiSpec, {
   customSiteTitle: 'Wonderland API Documentation',
+  swaggerOptions: {
+    persistAuthorization: true,
+  },
 }));
 
 app.use('/api/auth', proxyRequest('/api/auth', config.authServiceUrl, '/auth'));

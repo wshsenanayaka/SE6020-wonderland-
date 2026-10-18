@@ -3,9 +3,13 @@ export const openApiSpec = {
   info: {
     title: 'Wonderland Theme Park API',
     version: '1.0.0',
-    description: 'API documentation for the Wonderland React frontend and Node.js microservices backend.',
+    description: 'Interactive documentation for the Wonderland React frontend and Node.js microservices backend. Protected endpoints require a Cognito access token in the Authorize dialog.',
   },
   servers: [
+    {
+      url: '/',
+      description: 'Current API Gateway origin, including the deployed CloudFront endpoint',
+    },
     {
       url: 'http://127.0.0.1:8089',
       description: 'Local API Gateway',
@@ -19,6 +23,7 @@ export const openApiSpec = {
     { name: 'Payments', description: 'Stripe sandbox payment confirmation APIs' },
     { name: 'Activities', description: 'Administrator attraction management APIs' },
     { name: 'Ticket Passes', description: 'Administrator ticket pass management APIs' },
+    { name: 'Analytics', description: 'Anonymous activity analytics ingestion APIs' },
   ],
   paths: {
     '/health': {
@@ -57,7 +62,8 @@ export const openApiSpec = {
     '/api/auth/login': {
       post: {
         tags: ['Auth'],
-        summary: 'Login as visitor or administrator',
+        summary: 'Sign in with a Cognito user',
+        description: 'Returns a short-lived Cognito access token when Cognito is configured.',
         requestBody: {
           required: true,
           content: {
@@ -66,16 +72,8 @@ export const openApiSpec = {
               examples: {
                 visitor: {
                   value: {
-                    profile_type: 'visitor',
                     email: 'visitor@example.com',
-                    password: 'visitor123',
-                  },
-                },
-                administrator: {
-                  value: {
-                    profile_type: 'admin',
-                    email: 'admin@wonderland.com',
-                    password: 'admin123',
+                    password: 'ExamplePassword123!',
                   },
                 },
               },
@@ -115,7 +113,7 @@ export const openApiSpec = {
       get: {
         tags: ['Auth'],
         summary: 'Get current profile session from cookies',
-        security: [{ cookieAuth: [] }],
+        security: [{ cognitoBearerAuth: [] }],
         responses: {
           200: {
             description: 'Current session details',
@@ -128,10 +126,71 @@ export const openApiSpec = {
         },
       },
     },
+    '/api/auth/register': {
+      post: {
+        tags: ['Auth'],
+        summary: 'Register a Cognito visitor account',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/VisitorRegisterRequest' },
+            },
+          },
+        },
+        responses: {
+          201: { description: 'Registration accepted; email confirmation is required.' },
+          409: { $ref: '#/components/responses/Conflict' },
+          422: { $ref: '#/components/responses/ValidationError' },
+          503: { $ref: '#/components/responses/ServiceUnavailable' },
+        },
+      },
+    },
+    '/api/auth/confirm-registration': {
+      post: {
+        tags: ['Auth'],
+        summary: 'Confirm a Cognito visitor registration',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/CognitoConfirmationRequest' },
+            },
+          },
+        },
+        responses: {
+          200: { description: 'Registration confirmed.' },
+          422: { $ref: '#/components/responses/ValidationError' },
+          503: { $ref: '#/components/responses/ServiceUnavailable' },
+        },
+      },
+    },
+    '/api/auth/profile': {
+      put: {
+        tags: ['Auth'],
+        summary: 'Update Cognito profile attributes',
+        security: [{ cognitoBearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/VisitorProfileUpdateRequest' },
+            },
+          },
+        },
+        responses: {
+          200: { description: 'Cognito profile updated.' },
+          401: { $ref: '#/components/responses/Unauthorized' },
+          422: { $ref: '#/components/responses/ValidationError' },
+          503: { $ref: '#/components/responses/ServiceUnavailable' },
+        },
+      },
+    },
     '/api/users/register': {
       post: {
         tags: ['Users'],
         summary: 'Register a visitor account',
+        security: [{ cognitoBearerAuth: [] }],
         requestBody: {
           required: true,
           content: {
@@ -158,7 +217,7 @@ export const openApiSpec = {
       get: {
         tags: ['Users'],
         summary: 'Get logged in visitor profile',
-        security: [{ cookieAuth: [] }],
+        security: [{ cognitoBearerAuth: [] }],
         responses: {
           200: {
             description: 'Visitor profile',
@@ -175,7 +234,7 @@ export const openApiSpec = {
       put: {
         tags: ['Users'],
         summary: 'Update logged in visitor profile',
-        security: [{ cookieAuth: [] }],
+        security: [{ cognitoBearerAuth: [] }],
         requestBody: {
           required: true,
           content: {
@@ -203,7 +262,7 @@ export const openApiSpec = {
         tags: ['Users'],
         summary: 'List visitors',
         description: 'Administrative visitor list endpoint.',
-        security: [{ cookieAuth: [] }],
+        security: [{ cognitoBearerAuth: [] }],
         responses: {
           200: {
             description: 'Visitor list',
@@ -219,10 +278,22 @@ export const openApiSpec = {
         },
       },
     },
+    '/api/users/profile/sync': {
+      post: {
+        tags: ['Users'],
+        summary: 'Synchronize the authenticated Cognito visitor profile to Wonderland',
+        security: [{ cognitoBearerAuth: [] }],
+        responses: {
+          200: { description: 'Visitor profile synchronized.' },
+          403: { $ref: '#/components/responses/Forbidden' },
+        },
+      },
+    },
     '/api/business/bookings': {
       post: {
         tags: ['Bookings'],
         summary: 'Create a ticket booking and Stripe checkout session',
+        security: [{ cognitoBearerAuth: [] }],
         requestBody: {
           required: true,
           content: {
@@ -248,7 +319,7 @@ export const openApiSpec = {
       post: {
         tags: ['Bookings'],
         summary: 'Resend paid booking QR email',
-        security: [{ cookieAuth: [] }],
+        security: [{ cognitoBearerAuth: [] }],
         parameters: [
           { $ref: '#/components/parameters/IdPath' },
         ],
@@ -301,6 +372,7 @@ export const openApiSpec = {
       post: {
         tags: ['Payments'],
         summary: 'Confirm a Stripe checkout session after payment',
+        security: [{ cognitoBearerAuth: [] }],
         requestBody: {
           required: true,
           content: {
@@ -326,7 +398,7 @@ export const openApiSpec = {
       post: {
         tags: ['Activities'],
         summary: 'Create an attraction activity or toggle activity visibility',
-        security: [{ cookieAuth: [] }],
+        security: [{ cognitoBearerAuth: [] }],
         requestBody: {
           required: true,
           content: {
@@ -356,7 +428,7 @@ export const openApiSpec = {
       put: {
         tags: ['Platform'],
         summary: 'Update admin-controlled Wonderland Today operation metrics',
-        security: [{ cookieAuth: [] }],
+        security: [{ cognitoBearerAuth: [] }],
         requestBody: {
           required: true,
           content: {
@@ -382,6 +454,7 @@ export const openApiSpec = {
       get: {
         tags: ['Ticket Passes'],
         summary: 'List ticket passes',
+        security: [{ cognitoBearerAuth: [] }],
         responses: {
           200: {
             description: 'Ticket passes loaded',
@@ -396,7 +469,7 @@ export const openApiSpec = {
       post: {
         tags: ['Ticket Passes'],
         summary: 'Create a ticket pass',
-        security: [{ cookieAuth: [] }],
+        security: [{ cognitoBearerAuth: [] }],
         requestBody: {
           required: true,
           content: {
@@ -423,7 +496,7 @@ export const openApiSpec = {
       put: {
         tags: ['Ticket Passes'],
         summary: 'Update a ticket pass',
-        security: [{ cookieAuth: [] }],
+        security: [{ cognitoBearerAuth: [] }],
         parameters: [
           { $ref: '#/components/parameters/IdPath' },
         ],
@@ -452,7 +525,7 @@ export const openApiSpec = {
       delete: {
         tags: ['Ticket Passes'],
         summary: 'Delete a ticket pass',
-        security: [{ cookieAuth: [] }],
+        security: [{ cognitoBearerAuth: [] }],
         parameters: [
           { $ref: '#/components/parameters/IdPath' },
         ],
@@ -470,14 +543,33 @@ export const openApiSpec = {
         },
       },
     },
+    '/api/business/analytics/activity-impressions': {
+      post: {
+        tags: ['Analytics'],
+        summary: 'Record anonymous attraction impressions',
+        description: 'Accepts aggregate attraction identifiers only. It does not require authentication and does not store visitor-identifying information.',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/ActivityImpressionsRequest' },
+            },
+          },
+        },
+        responses: {
+          202: { description: 'Activity impressions accepted.' },
+          422: { $ref: '#/components/responses/ValidationError' },
+        },
+      },
+    },
   },
   components: {
     securitySchemes: {
-      cookieAuth: {
-        type: 'apiKey',
-        in: 'cookie',
-        name: 'wonderland_profile_type',
-        description: 'Session cookies are set by `/api/auth/login` and sent with `credentials: include`.',
+      cognitoBearerAuth: {
+        type: 'http',
+        scheme: 'bearer',
+        bearerFormat: 'JWT',
+        description: 'Paste a Cognito access token without the `Bearer ` prefix.',
       },
     },
     parameters: {
@@ -538,11 +630,18 @@ export const openApiSpec = {
       },
       LoginRequest: {
         type: 'object',
-        required: ['profile_type', 'email', 'password'],
+        required: ['email', 'password'],
         properties: {
-          profile_type: { type: 'string', enum: ['visitor', 'admin'], example: 'visitor' },
           email: { type: 'string', format: 'email', example: 'visitor@example.com' },
-          password: { type: 'string', format: 'password', example: 'visitor123' },
+          password: { type: 'string', format: 'password', example: 'ExamplePassword123!' },
+        },
+      },
+      CognitoConfirmationRequest: {
+        type: 'object',
+        required: ['email', 'confirmation_code'],
+        properties: {
+          email: { type: 'string', format: 'email', example: 'visitor@example.com' },
+          confirmation_code: { type: 'string', example: '123456' },
         },
       },
       LoginResponse: {
@@ -771,6 +870,19 @@ export const openApiSpec = {
           ticket_type: { type: 'string', example: '1' },
           quantity: { type: 'integer', minimum: 1, maximum: 20, example: 1 },
           contact_number: { type: 'string', example: '0704867765' },
+        },
+      },
+      ActivityImpressionsRequest: {
+        type: 'object',
+        required: ['activity_ids'],
+        properties: {
+          activity_ids: {
+            type: 'array',
+            minItems: 1,
+            maxItems: 100,
+            items: { type: 'integer', minimum: 1 },
+            example: [1, 4, 7],
+          },
         },
       },
       BookingResponse: {
