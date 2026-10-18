@@ -95,14 +95,13 @@ spec:
                 fi
 
                 echo 'Creating the initial Metabase metadata database account.'
-                mysql --protocol=TCP -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" <<SQL
-                CREATE USER '$METABASE_DB_USERNAME'@'%' IDENTIFIED BY '$METABASE_DB_PASSWORD';
-                SQL
+                mysql --protocol=TCP -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" \
+                  --execute "CREATE USER '$METABASE_DB_USERNAME'@'%' IDENTIFIED BY '$METABASE_DB_PASSWORD';"
               else
                 echo 'Preserving the existing Metabase metadata database account.'
               fi
 
-              mysql --protocol=TCP -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" <<SQL
+              mysql --protocol=TCP -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" --execute "
               -- The charset is applied only when Metabase is first initialized.
               -- Do not ALTER the existing metadata database while Metabase is running.
               CREATE DATABASE IF NOT EXISTS \`metabase\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
@@ -114,7 +113,7 @@ spec:
               GRANT SELECT ON \`$DB_NAME\`.\`analytics_ride_popularity\` TO '$REPORTING_DB_USERNAME'@'%';
               GRANT SELECT ON \`$DB_NAME\`.\`analytics_busiest_times\` TO '$REPORTING_DB_USERNAME'@'%';
               FLUSH PRIVILEGES;
-              SQL
+              "
 
               echo 'Verifying the Metabase metadata database, charset, and dedicated account.'
               metabase_charset=$(MYSQL_PWD="$METABASE_DB_PASSWORD" mysql --protocol=TCP \
