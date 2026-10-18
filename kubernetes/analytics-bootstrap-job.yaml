@@ -82,12 +82,30 @@ spec:
                 sleep 10
               done
 
+              if ! mysql --protocol=TCP -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" \
+                -e "SHOW CREATE USER '$METABASE_DB_USERNAME'@'%';" >/dev/null 2>&1; then
+                metabase_definer_views=$(mysql --protocol=TCP -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" \
+                  --batch --skip-column-names \
+                  -e "SELECT CONCAT(TABLE_SCHEMA, '.', TABLE_NAME) FROM information_schema.VIEWS WHERE DEFINER = '$METABASE_DB_USERNAME@%';")
+                if [ -n "$metabase_definer_views" ]; then
+                  echo "The missing Metabase account $METABASE_DB_USERNAME@% is still a view definer." >&2
+                  echo 'Refusing to recreate it automatically. An administrator must recreate the listed views with a valid definer first:' >&2
+                  printf '%s\n' "$metabase_definer_views" >&2
+                  exit 1
+                fi
+
+                echo 'Creating the initial Metabase metadata database account.'
+                mysql --protocol=TCP -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" <<SQL
+                CREATE USER '$METABASE_DB_USERNAME'@'%' IDENTIFIED BY '$METABASE_DB_PASSWORD';
+                SQL
+              else
+                echo 'Preserving the existing Metabase metadata database account.'
+              fi
+
               mysql --protocol=TCP -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" <<SQL
               -- The charset is applied only when Metabase is first initialized.
               -- Do not ALTER the existing metadata database while Metabase is running.
               CREATE DATABASE IF NOT EXISTS \`metabase\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-              CREATE USER IF NOT EXISTS '$METABASE_DB_USERNAME'@'%' IDENTIFIED BY '$METABASE_DB_PASSWORD';
-              ALTER USER '$METABASE_DB_USERNAME'@'%' IDENTIFIED BY '$METABASE_DB_PASSWORD';
               GRANT ALL PRIVILEGES ON \`metabase\`.* TO '$METABASE_DB_USERNAME'@'%';
               CREATE USER IF NOT EXISTS '$REPORTING_DB_USERNAME'@'%' IDENTIFIED BY '$REPORTING_DB_PASSWORD';
               ALTER USER '$REPORTING_DB_USERNAME'@'%' IDENTIFIED BY '$REPORTING_DB_PASSWORD';

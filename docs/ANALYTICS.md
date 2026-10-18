@@ -63,6 +63,10 @@ kubectl get ingress wonderland-api --namespace wonderland
 
 The CD workflow waits for the business-service rollout, the analytics bootstrap Job, and the Metabase rollout. A failed Job or failed rollout stops deployment; it does not publish a misleading healthy status.
 
+### Metabase account recovery
+
+The bootstrap Job preserves an existing `wonderland_metabase` MySQL account. It does not reset that account on every deployment because it can own existing MySQL views. If the Job reports that the account is missing but is still a `DEFINER` for one or more views, do not drop the views or create a replacement account blindly. Use an RDS database administrator session to inspect the view definitions, recreate only the listed views with a valid application or administrator definer, and then rerun CD. The Job prints the affected schema and view names without revealing passwords.
+
 ## Retention And Changes
 
 The analytics views retain only aggregate data derived from existing booking/check-in records. Their historical range therefore follows the existing RDS retention and backup policy. Before changing view definitions or credentials, update the CloudFormation stack and rerun CD so the bootstrap Job reapplies the intended least-privilege grants.
