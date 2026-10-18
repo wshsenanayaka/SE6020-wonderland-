@@ -14,12 +14,57 @@ spec:
       app.kubernetes.io/name: metabase
   template:
     metadata:
+      annotations:
+        wonderland.io/rds-ca-bundle-sha256: __RDS_CA_BUNDLE_SHA256__
       labels:
         app.kubernetes.io/name: metabase
         app.kubernetes.io/part-of: wonderland
         app.kubernetes.io/component: analytics
     spec:
       initContainers:
+        - name: build-rds-java-truststore
+          image: metabase/metabase:v0.56.7
+          imagePullPolicy: IfNotPresent
+          command: ['/bin/sh', '-ec']
+          args:
+            - |
+              : "${JAVA_HOME:?The Metabase Java runtime must define JAVA_HOME.}"
+              default_truststore="$JAVA_HOME/lib/security/cacerts"
+              test -r "$default_truststore"
+
+              cp "$default_truststore" /truststore/cacerts
+              awk '
+                /-----BEGIN CERTIFICATE-----/ {
+                  certificate += 1
+                  filename = sprintf("/workspace/rds-ca-%d.pem", certificate)
+                }
+                filename != "" { print > filename }
+                /-----END CERTIFICATE-----/ {
+                  close(filename)
+                  filename = ""
+                }
+              ' /rds-ca/rds-ca-bundle.pem
+
+              certificate_number=0
+              for certificate_file in /workspace/rds-ca-*.pem; do
+                test -f "$certificate_file" || continue
+                certificate_number=$((certificate_number + 1))
+                keytool -importcert -noprompt -trustcacerts \
+                  -alias "aws-rds-ca-$certificate_number" \
+                  -file "$certificate_file" \
+                  -keystore /truststore/cacerts \
+                  -storepass changeit
+              done
+              test "$certificate_number" -gt 0
+              chmod 0644 /truststore/cacerts
+          volumeMounts:
+            - name: rds-ca-bundle
+              mountPath: /rds-ca
+              readOnly: true
+            - name: metabase-java-truststore
+              mountPath: /truststore
+            - name: rds-ca-workspace
+              mountPath: /workspace
         - name: wait-for-metabase-db
           image: mysql:8.4
           imagePullPolicy: IfNotPresent
@@ -48,7 +93,9 @@ spec:
           args:
             - |
               for attempt in $(seq 1 60); do
-                if MYSQL_PWD="$MB_DB_PASS" mysqladmin ping --protocol=TCP -h "$MB_DB_HOST" -P "$MB_DB_PORT" -u "$MB_DB_USER" --silent; then
+                if MYSQL_PWD="$MB_DB_PASS" mysqladmin ping --protocol=TCP --ssl-mode=VERIFY_IDENTITY \
+                  --ssl-ca=/rds-ca/rds-ca-bundle.pem -h "$MB_DB_HOST" -P "$MB_DB_PORT" \
+                  -u "$MB_DB_USER" --silent; then
                   echo "Metabase metadata database is reachable at $MB_DB_HOST:$MB_DB_PORT"
                   exit 0
                 fi
@@ -57,6 +104,10 @@ spec:
               done
               echo "Timed out waiting for Metabase metadata database connection." >&2
               exit 1
+          volumeMounts:
+            - name: rds-ca-bundle
+              mountPath: /rds-ca
+              readOnly: true
       containers:
         - name: metabase
           image: metabase/metabase:v0.56.7
@@ -95,7 +146,9 @@ spec:
                   name: wonderland-metabase
                   key: MB_ENCRYPTION_SECRET_KEY
             - name: MB_DB_CONNECTION_PROPERTIES
-              value: 'socketTimeout=60000&connectTimeout=30000'
+              value: 'socketTimeout=60000&connectTimeout=30000&sslMode=verify-full&fallbackToSystemTrustStore=true'
+            - name: JAVA_TOOL_OPTIONS
+              value: '-Djavax.net.ssl.trustStore=/var/run/wonderland/rds-truststore/cacerts -Djavax.net.ssl.trustStorePassword=changeit'
             - name: MB_ANON_TRACKING_ENABLED
               value: 'false'
             - name: MB_JETTY_PORT
@@ -131,3 +184,18 @@ spec:
             limits:
               cpu: 1000m
               memory: 1024Mi
+          volumeMounts:
+            - name: metabase-java-truststore
+              mountPath: /var/run/wonderland/rds-truststore
+              readOnly: true
+      volumes:
+        - name: rds-ca-bundle
+          configMap:
+            name: wonderland-rds-ca-bundle
+            items:
+              - key: rds-ca-bundle.pem
+                path: rds-ca-bundle.pem
+        - name: metabase-java-truststore
+          emptyDir: {}
+        - name: rds-ca-workspace
+          emptyDir: {}

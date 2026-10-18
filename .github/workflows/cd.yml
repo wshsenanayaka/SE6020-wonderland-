@@ -710,6 +710,21 @@ jobs:
           echo "Stripe Checkout cancel URL: $stripe_cancel_url"
 
           kubectl apply -f kubernetes/namespace.yaml
+          rds_ca_bundle_file="$(mktemp)"
+          trap 'rm -f "$rds_ca_bundle_file"' EXIT
+          curl --fail --silent --show-error --location --retry 3 --retry-all-errors \
+            --connect-timeout 15 --max-time 60 \
+            https://truststore.pki.rds.amazonaws.com/ap-southeast-1/ap-southeast-1-bundle.pem \
+            --output "$rds_ca_bundle_file"
+          rds_ca_certificate_count="$(grep -c '^-----BEGIN CERTIFICATE-----$' "$rds_ca_bundle_file" || true)"
+          if [ "$rds_ca_certificate_count" -lt 1 ]; then
+            echo '::error title=Invalid RDS CA bundle::The downloaded ap-southeast-1 bundle did not contain a PEM certificate.'
+            exit 1
+          fi
+          rds_ca_bundle_sha256="$(sha256sum "$rds_ca_bundle_file" | awk '{print $1}')"
+          kubectl create configmap wonderland-rds-ca-bundle --namespace wonderland \
+            --from-file=rds-ca-bundle.pem="$rds_ca_bundle_file" \
+            --dry-run=client -o yaml | kubectl apply -f -
           sed \
             -e "s|__DATABASE_HOST__|$database_endpoint|g" \
             -e "s|__DATABASE_USER__|$database_username|g" \
@@ -816,6 +831,7 @@ jobs:
           sed \
             -e "s|__ECR_REGISTRY__|$ecr_registry|g" \
             -e "s|__IMAGE_TAG__|$GITHUB_SHA|g" \
+            -e "s|__RDS_CA_BUNDLE_SHA256__|$rds_ca_bundle_sha256|g" \
             kubernetes/metabase-deployment.yaml | kubectl apply -f -
           if ! kubectl rollout status deployment/metabase -n wonderland --timeout=10m; then
             echo '::error title=Metabase rollout failed::The Metabase pod did not become Ready within 10 minutes. Pod status, events, and logs follow.'

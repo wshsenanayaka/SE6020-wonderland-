@@ -42,6 +42,18 @@ Open `http://localhost:3000` and create the initial Metabase administrator accou
 4. Enable the encrypted MySQL connection option if your RDS configuration requires it.
 5. Sync the schema. The reporting account can see only these four views, so saved questions cannot query personal booking data.
 
+## RDS TLS Certificate Validation
+
+Each CD run downloads the official [Amazon RDS `ap-southeast-1` CA bundle](https://truststore.pki.rds.amazonaws.com/ap-southeast-1/ap-southeast-1-bundle.pem), stores it in the read-only `wonderland-rds-ca-bundle` ConfigMap, and creates a Java truststore for the Metabase Pod. The bundle hash is part of the Pod template, so a bundle update triggers a Metabase rollout. The truststore starts with the standard Java CA certificates and adds the regional Amazon RDS root CAs, allowing RDS certificate rotation without disabling validation.
+
+When adding or editing **Wonderland Reporting** in Metabase:
+
+1. Turn on **Use a secure connection (SSL)**.
+2. In **Additional JDBC connection string options**, enter `sslMode=verify-full&fallbackToSystemTrustStore=true`.
+3. Do not use `trustServerCertificate=true`, `sslMode=trust`, or disabled hostname verification.
+
+`verify-full` requires TLS encryption, validates the RDS certificate against the Java truststore, and validates the RDS hostname.
+
 Create these dashboard cards:
 
 - A line chart: `arrival_date` versus `arrived_visitors` from `analytics_daily_arrivals`.
